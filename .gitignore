@@ -1,0 +1,25 @@
+# Editor temporary files
+*~
+.*~
+*.un~
+*.swp
+*.swo
+*.bak
+*.orig
+
+# Python caches
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/project files (if using VSCode or CLion)
+.vscode/
+.idea/
+*.iml
+
+# Logs and temporary files
+*.log
+*.tmp
