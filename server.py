@@ -518,8 +518,8 @@ Examples:
     python3 server.py --mobility --tcp --csv my_run
 """
 )
-parser.add_argument("--port", type=int, default=8888,
-                    help="Port to listen on (default: 8888)")
+parser.add_argument("--port", type=int, default=47892,
+                    help="Port to listen on (default: 47892)")
 parser.add_argument("--tcp", action="store_true",
                     help="Use TCP instead of UDP")
 parser.add_argument("--mobility", action="store_true",
