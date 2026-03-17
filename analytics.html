@@ -663,7 +663,7 @@ function loadFileList(){
     .catch(e=>{
       sel.innerHTML='<option value="">— server not available —</option>';
       if(location.protocol==='file:')
-        st('Serve with: python3 -m http.server');
+        st('Need an http server');
       else
         st('Directory listing unavailable: '+e.message);
     });
