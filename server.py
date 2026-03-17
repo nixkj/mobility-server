@@ -481,7 +481,6 @@ def run_tcp_server(port, handler):
     srv.bind(("0.0.0.0", port))
     srv.listen(5)
     log(f"[TCP] Listening on 0.0.0.0:{port}  (waiting for connection…)")
-    log( "[TCP] Start the server BEFORE pressing Stream in the app.")
     while True:
         conn, addr = srv.accept()
         threading.Thread(
