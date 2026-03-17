@@ -247,7 +247,7 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
         <div class="cc"><div class="cct">Cumulative Distance — Haversine (m)</div><canvas id="c-dst"></canvas></div>
       </div>
       <div class="cp" id="p-vib">
-        <div class="cc"><div class="cct">Vibration — |accel_mag − g| (m/s²)</div><canvas id="c-vib"></canvas></div>
+        <div class="cc"><div class="cct">IMU load — accel std magnitude (m/s²)</div><canvas id="c-vib"></canvas></div>
         <div class="cc"><div class="cct">GPS Accuracy — H &amp; V (m)</div><canvas id="c-hacc"></canvas></div>
       </div>
     </div>
@@ -463,14 +463,41 @@ function analyse(raw, sgW, altW) {
 
   /* ── Altitude change ─────────────────────────────────────── */
   const altFF    = ffbfill(alt.map((v,i)=>validGPS[i]?v:null)).map(v=>v??0);
-  const altChg   = altFF.map(v=>v-altFF[0]);
+  /* Per-step altitude delta: difference between consecutive samples. */
+  const altChg   = altFF.map((v,i)=>i===0 ? 0 : v-altFF[i-1]);
   const altSmth  = rollingMean(altChg, altW);
 
-  /* ── IMU vibration (rotation-invariant) ─────────────────── */
-  const ax=raw.map(r=>parseFloat(r.accel_avg_x)||0);
-  const ay=raw.map(r=>parseFloat(r.accel_avg_y)||0);
-  const az=raw.map(r=>parseFloat(r.accel_avg_z)||0);
-  const vib=ax.map((x,i)=>Math.abs(Math.sqrt(x*x+ay[i]*ay[i]+az[i]*az[i])-G_STD));
+  /* ── IMU dynamic load — within-window standard deviation ─── */
+  /* √(σx² + σy² + σz²) measures how much the raw accelerometer samples
+     scattered during the app's reporting window.  At rest the samples
+     don't vary → value is near zero.  Vibration, road roughness, and
+     dynamic loads all increase scatter → value rises.  No gravity
+     subtraction is needed, making this completely orientation-invariant
+     and immune to sensor bias.  Falls back to the mean-magnitude method
+     if std columns are absent from the raw data. */
+  const sx=raw.map(r=>parseFloat(r.accel_std_x));
+  const sy=raw.map(r=>parseFloat(r.accel_std_y));
+  const sz=raw.map(r=>parseFloat(r.accel_std_z));
+  const hasStd = sx.some(v=>isFinite(v)&&v>0);
+
+  let vib;
+  if(hasStd){
+    vib=sx.map((x,i)=>{
+      const vx=isFinite(x)?x:0, vy=isFinite(sy[i])?sy[i]:0, vz=isFinite(sz[i])?sz[i]:0;
+      return Math.sqrt(vx*vx+vy*vy+vz*vz);
+    });
+  } else {
+    /* Fallback: self-calibrated mean-magnitude method */
+    const ax=raw.map(r=>parseFloat(r.accel_avg_x)||0);
+    const ay=raw.map(r=>parseFloat(r.accel_avg_y)||0);
+    const az=raw.map(r=>parseFloat(r.accel_avg_z)||0);
+    const accelMag=ax.map((x,i)=>Math.sqrt(x*x+ay[i]*ay[i]+az[i]*az[i]));
+    const staticMags=accelMag.filter((_,i)=>speedMS[i]<0.5);
+    const gLocal=staticMags.length>=10
+      ?staticMags.reduce((a,b)=>a+b,0)/staticMags.length
+      :G_STD;
+    vib=accelMag.map(m=>Math.abs(m-gLocal));
+  }
 
   /* ── Assemble result rows ─────────────────────────────────── */
   const rows=[];
@@ -663,7 +690,7 @@ function loadFileList(){
     .catch(e=>{
       sel.innerHTML='<option value="">— server not available —</option>';
       if(location.protocol==='file:')
-        st('Need an http server');
+        st('Serve with: python3 -m http.server');
       else
         st('Directory listing unavailable: '+e.message);
     });
@@ -916,12 +943,12 @@ function buildAll(){
         y2:{type:'linear',position:'right',
           grid:{drawOnChartArea:false},
           ticks:{color:CL.b},
-          title:{display:true,text:'Δalt (m)',color:CL.b,font:{size:9}}}
+          title:{display:true,text:'Δalt/step (m)',color:CL.b,font:{size:9}}}
       }
     };
     makeChart('c-alt',[
       ds('Altitude',       col('altitude_m'),          CL.a,true),
-      {...ds('Δalt smooth',col('alt_change_smooth_m'), CL.b,false,true),yAxisID:'y2'},
+      {...ds('Δalt/step smooth',col('alt_change_smooth_m'), CL.b,false,true),yAxisID:'y2'},
     ],altOpts);
 
     makeChart('c-dst',[
@@ -930,7 +957,7 @@ function buildAll(){
 
     /* Vibration */
     makeChart('c-vib',[
-      ds('|accel| − g',col('vibration_ms2'),CL.e,true),
+      ds('accel std mag',col('vibration_ms2'),CL.e,true),
     ],baseOpts('m/s²'));
 
     makeChart('c-hacc',[
@@ -1040,7 +1067,7 @@ function updInsp(idx){
   const d=DATA[idx]; if(!d) return;
   document.getElementById('ic').innerHTML=`
     <div class="ig"><div class="igt">Time</div>
-      ${row('Received time', String(d.received_at).slice(11,19))}
+      ${row('Timestamp', String(d.received_at).slice(11,19))}
       ${d.gps_time_str ? row('GPS time', d.gps_time_str, 'a2') : ''}
       ${row('Elapsed',   fmtTime(d.elapsed_s),'a1')}
       ${row('Δt',        fmt(d.dt_s,2)+' s')}
@@ -1059,13 +1086,13 @@ function updInsp(idx){
     <div class="ig"><div class="igt">Position</div>
       ${row('Distance',     fmt((+d.distance_m||0)/1000,3)+' km','a1')}
       ${row('Altitude',     fmt(d.altitude_m,1)+' m','a1')}
-      ${row('Δalt',         fmt(d.alt_change_m,1)+' m')}
-      ${row('Δalt smooth',  fmt(d.alt_change_smooth_m,1)+' m','a2')}
+      ${row('Δalt/step',      fmt(d.alt_change_m,1)+' m')}
+      ${row('Δalt/step smth', fmt(d.alt_change_smooth_m,1)+' m','a2')}
       ${row('Lat',          fmt(d.latitude,6))}
       ${row('Lon',          fmt(d.longitude,6))}
     </div>
     <div class="ig"><div class="igt">Quality</div>
-      ${row('Other',       fmt(d.vibration_ms2,3)+' m/s²','a5')}
+      ${row('IMU load mag',       fmt(d.vibration_ms2,3)+' m/s²','a5')}
       ${row('H-accuracy',  fmt(d.gps_h_accuracy_m,1)+' m')}
       ${row('V-accuracy',  fmt(d.gps_v_accuracy_m,1)+' m')}
     </div>`;
@@ -1076,7 +1103,9 @@ function updInsp(idx){
 ═══════════════════════════════════════════════════════════════ */
 function updateStats(){
   const n=DATA.length, last=DATA[n-1]||{};
-  const dalt=+(last.alt_change_m||0);
+  const altFirst=DATA.find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
+  const altLast=[...DATA].reverse().find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
+  const dalt=altFirst&&altLast ? (+altLast.altitude_m)-(+altFirst.altitude_m) : 0;
   const maxV=DATA.reduce((m,d)=>Math.max(m,isFinite(+d.speed_ms)?+d.speed_ms:0),0);
   document.getElementById('cr').innerHTML=`<b>${n}</b> rows`;
   document.getElementById('cd').innerHTML=`dur <b>${fmtTime(last.elapsed_s)}</b>`;
