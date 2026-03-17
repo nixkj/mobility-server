@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moto Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{
+  --ac:#e8a317;--ac2:#28bb78;--ac3:#4a8fec;
+  --ac4:#d94f4f;--ac5:#9f6fe0;--grey:#8896a8;
+  --fh:'Barlow Condensed',sans-serif;--fm:'JetBrains Mono',monospace;
+}
+[data-theme="light"]{
+  --bg:#f2f3f6;--su:#ffffff;--su2:#edf0f4;--bd:#dde1e8;--bd2:#c6ccd7;
+  --tx:#1c2130;--mu:#6b7585;--gr:#e6e9ef;--tk:#8996a8;--lg:#6b7585;
+  --ov:rgba(242,243,246,.97);
+}
+[data-theme="dark"]{
+  --bg:#0b0d11;--su:#131619;--su2:#1a1d22;--bd:#252b35;--bd2:#313844;
+  --tx:#dde2ec;--mu:#5c6474;--gr:#1c2028;--tk:#3e4756;--lg:#5c6474;
+  --ov:rgba(11,13,17,.97);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh);overflow:hidden}
+
+/* header */
+#hdr{position:fixed;inset:0 0 auto;height:48px;z-index:100;display:flex;align-items:center;
+  gap:10px;padding:0 14px;background:var(--su);border-bottom:1px solid var(--bd)}
+#hdr h1{font-size:20px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ac);white-space:nowrap}
+#hdr h1 span{color:var(--mu);font-weight:300}
+.hb{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:4px;
+  background:var(--su2);border:1px solid var(--bd2);color:var(--tx);font-family:var(--fh);
+  font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.hb:hover{border-color:var(--ac)}
+#fi{display:none}
+#thbtn{padding:4px 9px;font-size:15px;line-height:1}
+[data-theme="light"] #isun{display:inline}[data-theme="light"] #imoon{display:none}
+[data-theme="dark"]  #isun{display:none} [data-theme="dark"]  #imoon{display:inline}
+#si{display:flex;gap:8px;margin-left:auto}
+.chip{font-family:var(--fm);font-size:11px;color:var(--mu);white-space:nowrap}
+.chip b{color:var(--tx)}
+#stmsg{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap;margin-left:4px}
+
+/* body grid */
+#body{position:fixed;top:48px;left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
+
+/* left panel */
+#lp{display:flex;flex-direction:column;border-right:1px solid var(--bd);overflow:hidden;height:100%}
+#mapw{flex-shrink:0}
+#map{width:100%;background:#ccc}
+[data-theme="dark"]  .leaflet-tile-pane{filter:brightness(.65) saturate(.45)}
+[data-theme="light"] .leaflet-tile-pane{filter:brightness(1) saturate(.85)}
+.leaflet-container{font-family:var(--fm)!important}
+#insp{flex:1;min-height:0;overflow-y:auto;padding:9px;border-top:1px solid var(--bd)}
+#insp h3{font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--mu);margin-bottom:7px}
+.ig{margin-bottom:9px}
+.igt{font-size:9px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--mu);margin-bottom:3px;padding-bottom:3px;border-bottom:1px solid var(--bd)}
+.ir{display:grid;grid-template-columns:1fr auto;padding:1.5px 0;border-bottom:1px solid var(--gr)}
+.ir:last-child{border-bottom:none}
+.il{font-family:var(--fm);font-size:10px;color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iv{font-family:var(--fm);font-size:11px;font-weight:500;text-align:right;white-space:nowrap;padding-left:6px}
+.a1{color:var(--ac)}.a2{color:var(--ac2)}.a3{color:var(--ac3)}.a4{color:var(--ac4)}.a5{color:var(--ac5)}
+
+/* right panel */
+#rp{display:flex;flex-direction:column;height:100%;overflow:hidden}
+#tlb{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:5px 13px;
+  background:var(--su);border-bottom:1px solid var(--bd)}
+#tlb label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mu);white-space:nowrap}
+#tls{flex:1;-webkit-appearance:none;appearance:none;height:3px;background:var(--bd2);
+  border-radius:3px;outline:none;cursor:pointer}
+#tls::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--ac);border:2px solid var(--bg);cursor:pointer}
+#tdisp{font-family:var(--fm);font-size:12px;color:var(--ac);white-space:nowrap;min-width:62px;text-align:right}
+#rzoom{display:none;padding:3px 9px;font-size:11px;border-radius:3px;
+  background:var(--su2);border:1px solid var(--bd2);color:var(--mu);
+  font-family:var(--fm);cursor:pointer;white-space:nowrap}
+#rzoom.vis{display:inline-block}
+#rzoom:hover{border-color:var(--ac);color:var(--ac)}
+
+/* tabs */
+#tabs{flex-shrink:0;display:flex;gap:1px;background:var(--bd)}
+.tab{padding:6px 15px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;background:var(--su2);color:var(--mu);border:none;font-family:var(--fh)}
+.tab:hover{color:var(--tx);background:var(--su)}
+.tab.on{color:var(--ac);background:var(--su);border-bottom:2px solid var(--ac)}
+.zoom-hint{margin-left:auto;padding:6px 12px;font-family:var(--fm);font-size:9px;
+  color:var(--mu);background:var(--su2);letter-spacing:.04em}
+
+/* chart pages — fill remaining height, set by JS */
+#cpages{position:relative;overflow:hidden;flex-shrink:0}
+.cp{display:none;position:absolute;inset:0;padding:9px 11px;gap:9px}
+.cp.on{display:grid;grid-template-rows:1fr 1fr}
+.cc{background:var(--su2);border:1px solid var(--bd);border-radius:5px;
+  padding:7px 9px;overflow:hidden;display:flex;flex-direction:column}
+.cct{flex-shrink:0;font-size:10px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--mu);margin-bottom:4px}
+.cc canvas{display:block}
+
+/* upload overlay */
+#ov{position:fixed;inset:0;z-index:300;display:flex;align-items:center;
+  justify-content:center;background:var(--ov)}
+#ov.gone{display:none}
+.ub{border:2px dashed var(--bd2);border-radius:12px;padding:48px 64px;text-align:center;cursor:pointer}
+.ub:hover{border-color:var(--ac)}
+.ub h2{font-size:26px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--tx);margin:14px 0 5px}
+.ub p{font-family:var(--fm);font-size:12px;color:var(--mu)}
+.ub .hint{margin-top:14px;color:var(--ac);font-size:13px;font-weight:600}
+.mb{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;
+  text-transform:uppercase;font-family:var(--fm)}
+.mb0{background:rgba(217,79,79,.13);color:var(--ac4)}
+.mb1{background:rgba(40,187,120,.13);color:var(--ac2)}
+.mb2{background:rgba(74,143,236,.13);color:var(--ac3)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div id="ov">
+  <div class="ub" onclick="document.getElementById('fi').click()"
+       ondragover="event.preventDefault()" ondrop="onDrop(event)">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    <h2>Load Analytics CSV</h2>
+    <p>Output from mobility_analytics.py</p>
+    <p class="hint">Click to browse &nbsp;·&nbsp; drag &amp; drop</p>
+  </div>
+</div>
+
+<div id="hdr">
+  <h1>Moto <span>Analytics</span></h1>
+  <button class="hb" onclick="document.getElementById('fi').click()">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>Load CSV
+  </button>
+  <input type="file" id="fi" accept=".csv">
+  <button class="hb" id="thbtn" onclick="toggleTheme()">
+    <span id="isun">☀️</span><span id="imoon">🌙</span>
+  </button>
+  <span id="stmsg"></span>
+  <div id="si">
+    <span class="chip" id="cr">—</span>
+    <span class="chip" id="cd">—</span>
+    <span class="chip" id="ck">—</span>
+    <span class="chip" id="ca">—</span>
+    <span class="chip" id="cs">—</span>
+  </div>
+</div>
+
+<div id="body">
+  <div id="lp">
+    <div id="mapw"><div id="map"></div></div>
+    <div id="insp">
+      <h3>Data at cursor</h3>
+      <div id="ic"><span style="font-family:var(--fm);font-size:11px;color:var(--mu)">Hover a chart or drag the slider</span></div>
+    </div>
+  </div>
+
+  <div id="rp">
+    <div id="tlb">
+      <label>Time</label>
+      <input type="range" id="tls" min="0" max="100" value="0" step="1">
+      <span id="tdisp">0:00</span>
+      <button id="rzoom" onclick="resetZoom()">⟲ Reset zoom</button>
+    </div>
+    <div id="tabs">
+      <button class="tab on"  data-p="vel">Velocity</button>
+      <button class="tab" data-p="acc">Acceleration</button>
+      <button class="tab" data-p="pos">Position</button>
+      <button class="tab" data-p="grv">Gravity</button>
+      <span class="zoom-hint">scroll to zoom &nbsp;·&nbsp; drag to select &nbsp;·&nbsp; shift+drag to pan</span>
+    </div>
+    <div id="cpages">
+      <div class="cp on" id="p-vel">
+        <div class="cc"><div class="cct">Speed — GPS &amp; Fused (m/s)</div><canvas id="c-spd"></canvas></div>
+        <div class="cc"><div class="cct">Velocity Components — East / North / Vertical (m/s)</div><canvas id="c-vel"></canvas></div>
+      </div>
+      <div class="cp" id="p-acc">
+        <div class="cc"><div class="cct">GPS-Derived Acceleration — Forward / Lateral / Vertical (m/s²)</div><canvas id="c-gacc"></canvas></div>
+        <div class="cc"><div class="cct">IMU Linear Acceleration — Forward / Lateral / Vertical (m/s²)</div><canvas id="c-iacc"></canvas></div>
+      </div>
+      <div class="cp" id="p-pos">
+        <div class="cc"><div class="cct">Altitude — GPS &amp; Fused (m)</div><canvas id="c-alt"></canvas></div>
+        <div class="cc"><div class="cct">Cumulative Displacement — GPS / Fused / IMU (m)</div><canvas id="c-dsp"></canvas></div>
+      </div>
+      <div class="cp" id="p-grv">
+        <div class="cc"><div class="cct">Gravity Estimate — Body Frame x / y / z (m/s²)</div><canvas id="c-gvec"></canvas></div>
+        <div class="cc"><div class="cct">|Gravity| vs G_STD + Update Mode</div><canvas id="c-gmag"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════
+   Constants & state
+═══════════════════════════════════════════════════════════════ */
+const G_STD = 9.80665;
+const CL = { a:'#e8a317', b:'#28bb78', c:'#4a8fec', d:'#d94f4f', e:'#9f6fe0', g:'#8896a8' };
+
+const CLAMP = {
+  gps_vel_vertical_ms: [-25, 25], gps_speed_3d_ms:   [0, 60],
+  fused_speed_3d_ms:   [0, 60],   vertical_speed_ms:  [-25, 25],
+  gps_accel_forward:   [-20, 20], gps_accel_vertical: [-20, 20],
+  gps_accel_lateral:   [-20, 20], gps_accel_mag:      [0, 40],
+};
+
+let DATA = [], XS = [], XLBL = [];
+const CH = {};
+let CANVAS_H = 120;
+let mapObj, mapTrack, mapMarker, mapTile, mapAllPts = [];
+let isZoomed = false;
+/* Index locked by a map click — persists until the user hovers a chart */
+let mapLockedIdx = null;
+
+/* ═══════════════════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════════════════ */
+const st  = m => { document.getElementById('stmsg').textContent = m; };
+const fmt = (v, d=2) => (v==null||!isFinite(+v)) ? '—' : (+v).toFixed(d);
+const hexA = (h,a) =>
+  `rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${a})`;
+
+function fmtTime(s) {
+  s = Math.round(+s||0);
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60;
+  return h>0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+    : `${m}:${String(ss).padStart(2,'0')}`;
+}
+
+function col(key) {
+  const [lo,hi] = CLAMP[key]||[];
+  return DATA.map(d => {
+    const v=d[key];
+    if(v===''||v==null) return null;
+    const n=+v;
+    if(!isFinite(n)) return null;
+    if(lo!==undefined && (n<lo||n>hi)) return null;
+    return n;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Layout sizing
+   KEY FIX: #cpages is always visible (only its .cp children
+   are hidden), so its clientWidth is always correct.
+   We use it for ALL canvases so hidden-tab charts get the same
+   width as the active one, eliminating x-axis corruption on
+   tab switch.
+═══════════════════════════════════════════════════════════════ */
+function computeCanvasW() {
+  // #cpages padding: 9px 11px → 22px horizontal
+  // .cc padding: 7px 9px → 18px horizontal
+  const w = document.getElementById('cpages').clientWidth - 40;
+  return Math.max(100, w);
+}
+
+function sizeLayout() {
+  const HDR  = 48;
+  const TLB  = document.getElementById('tlb').offsetHeight  || 34;
+  const TABS = document.getElementById('tabs').offsetHeight || 33;
+  const cpH  = Math.max(200, window.innerHeight - HDR - TLB - TABS);
+  document.getElementById('cpages').style.height = cpH + 'px';
+
+  const mapH = Math.max(160, Math.round(cpH * 0.35));
+  document.getElementById('map').style.height  = mapH + 'px';
+  document.getElementById('mapw').style.height = mapH + 'px';
+
+  CANVAS_H = Math.max(60, Math.floor((cpH - 27) / 2) - 22 - 14);
+  return CANVAS_H;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Theme
+═══════════════════════════════════════════════════════════════ */
+function toggleTheme() {
+  document.documentElement.dataset.theme =
+    document.documentElement.dataset.theme==='dark' ? 'light' : 'dark';
+  applyThemeCharts(); swapTile();
+}
+function tc() {
+  return document.documentElement.dataset.theme==='dark'
+    ? {grid:'#1c2028',tick:'#3e4756',leg:'#5c6474'}
+    : {grid:'#e6e9ef',tick:'#8996a8',leg:'#6b7585'};
+}
+function applyThemeCharts() {
+  const t=tc();
+  Object.values(CH).forEach(ch => {
+    Object.keys(ch.options.scales).forEach(ax => {
+      if(ch.options.scales[ax].grid)  ch.options.scales[ax].grid.color  = t.grid;
+      if(ch.options.scales[ax].ticks) ch.options.scales[ax].ticks.color = t.tick;
+    });
+    ch.options.plugins.legend.labels.color = t.leg;
+    ch.update('none');
+  });
+}
+function swapTile() {
+  if(!mapObj) return;
+  const dark = document.documentElement.dataset.theme==='dark';
+  if(mapTile) mapObj.removeLayer(mapTile);
+  mapTile = L.tileLayer(
+    dark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+         : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    {maxZoom:19,attribution:''}
+  ).addTo(mapObj);
+  if(mapTrack) mapTrack.bringToFront();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   File loading
+═══════════════════════════════════════════════════════════════ */
+document.getElementById('fi').addEventListener('change', e => {
+  if(e.target.files[0]) parseCSV(e.target.files[0]);
+  e.target.value='';
+});
+function onDrop(e) { e.preventDefault(); if(e.dataTransfer.files[0]) parseCSV(e.dataTransfer.files[0]); }
+
+function parseCSV(file) {
+  st('Parsing…');
+  Papa.parse(file, {
+    header:true, dynamicTyping:true, skipEmptyLines:true,
+    complete(r) {
+      DATA  = r.data;
+      XS    = DATA.map(d => { const v=+d.elapsed_s; return isFinite(v)?v:0; });
+      /* Use wall-clock time from received_at ("2026-03-17 08:30:07.235" → "08:30:07").
+         Falls back to elapsed m:ss if the field is missing or malformed. */
+      XLBL  = DATA.map(d => {
+        const s = String(d.received_at || '');
+        const t = s.slice(11, 19);   /* HH:MM:SS */
+        return t.length === 8 ? t : fmtTime(+d.elapsed_s || 0);
+      });
+      document.getElementById('ov').classList.add('gone');
+      updateStats();
+      st(`${DATA.length} rows — building…`);
+      /* KEY FIX: size layout FIRST so map and canvases get correct
+         pixel dimensions before anything tries to render into them */
+      setTimeout(() => {
+        sizeLayout();
+        populateMap();   /* map now has correct height → fitBounds works */
+        buildAll();      /* canvases use cpages.clientWidth → correct width */
+      }, 120);
+    },
+    error(e) { st('Parse error: '+e.message); }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Crosshair plugin
+═══════════════════════════════════════════════════════════════ */
+Chart.register({
+  id: 'xhair',
+  afterDraw(ch) {
+    if(ch._xi==null) return;
+    const meta=ch.getDatasetMeta(0);
+    const pt=meta?.data?.[ch._xi];
+    if(!pt) return;
+    const {ctx,chartArea:{top,bottom}}=ch;
+    ctx.save();
+    ctx.strokeStyle=hexA(CL.a,0.5);
+    ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pt.x,top); ctx.lineTo(pt.x,bottom); ctx.stroke();
+    ctx.restore();
+  }
+});
+function syncX(idx) { Object.values(CH).forEach(ch => { ch._xi=idx; ch.update('none'); }); }
+
+/* Single entry point: sync everything to a data row index.
+   Called from chart hover, slider, AND map click. */
+function goToIdx(idx, fromMap=false) {
+  if(idx < 0 || idx >= DATA.length) return;
+  if(fromMap) mapLockedIdx = idx;   /* lock so mouseleave can't clear it */
+  syncX(idx);
+  document.getElementById('tls').value = idx;
+  /* Show wall-clock timestamp in the time bar */
+  document.getElementById('tdisp').textContent = XLBL[idx] || fmtTime(XS[idx]||0);
+  updMap(idx);
+  updInsp(idx);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Zoom helpers
+═══════════════════════════════════════════════════════════════ */
+function onZoomOrPan(sourceChart) {
+  /* Synchronise all other charts to the same x-axis range */
+  const {min,max} = sourceChart.scales.x;
+  Object.values(CH).forEach(ch => {
+    if(ch===sourceChart) return;
+    ch.zoomScale('x', {min,max}, 'none');
+  });
+  isZoomed = true;
+  document.getElementById('rzoom').classList.add('vis');
+}
+
+function resetZoom() {
+  Object.values(CH).forEach(ch => ch.resetZoom());
+  isZoomed = false;
+  document.getElementById('rzoom').classList.remove('vis');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Chart factory
+═══════════════════════════════════════════════════════════════ */
+function baseOpts(yLbl) {
+  const t=tc();
+  return {
+    responsive: false,   /* explicit pixel sizes — no CSS-height fights */
+    animation: false,
+    plugins: {
+      legend: {
+        display:true, position:'top', align:'end',
+        labels:{boxWidth:10,boxHeight:2,padding:7,font:{size:9},color:t.leg}
+      },
+      tooltip: { enabled:false },
+      zoom: {
+        /* Scroll wheel: zoom x-axis */
+        zoom: {
+          wheel:  { enabled:true, speed:0.1 },
+          pinch:  { enabled:true },
+          /* Shift + drag: box-select zoom over a region */
+          drag: {
+            enabled: true,
+            backgroundColor: hexA(CL.a, 0.10),
+            borderColor:     hexA(CL.a, 0.60),
+            borderWidth: 1,
+          },
+          mode:   'x',
+          onZoomComplete: ({chart}) => onZoomOrPan(chart)
+        },
+        /* Shift + drag: pan the x-axis */
+        pan: {
+          enabled: true,
+          mode:    'x',
+          modifierKey: 'shift',
+          onPanComplete: ({chart}) => onZoomOrPan(chart)
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'category',
+        grid: {color:t.grid},
+        ticks: {color:t.tick, maxTicksLimit:10, maxRotation:0, autoSkip:true}
+      },
+      y: {
+        grid: {color:t.grid},
+        ticks: {color:t.tick},
+        title: {display:!!yLbl,text:yLbl,color:t.tick,font:{size:9}}
+      }
+    }
+  };
+}
+
+function ds(label,data,color,fill=false,dashed=false) {
+  return {
+    label,data,borderColor:color,
+    backgroundColor: fill ? hexA(color,0.12) : 'transparent',
+    borderWidth:1.5, borderDash:dashed?[4,3]:[],
+    pointRadius:0, pointHoverRadius:0,
+    tension:0.15, fill, spanGaps:false
+  };
+}
+
+function makeChart(id, datasets, opts) {
+  const canvas=document.getElementById(id);
+  if(!canvas){ console.warn('No canvas:',id); return; }
+
+  /* Use #cpages width — always correct even for hidden-page canvases */
+  const w = computeCanvasW();
+  canvas.width  = w;
+  canvas.height = CANVAS_H;
+  canvas.style.width  = w+'px';
+  canvas.style.height = CANVAS_H+'px';
+
+  if(CH[id]) CH[id].destroy();
+  const ch = new Chart(canvas,{type:'line',data:{labels:XLBL,datasets},options:opts});
+  CH[id]=ch;
+
+  canvas.addEventListener('mouseenter', () => {
+    /* User is actively hovering — release the map-click lock so hover takes over */
+    mapLockedIdx = null;
+  });
+  canvas.addEventListener('mousemove', e => {
+    const pts=ch.getElementsAtEventForMode(e,'index',{intersect:false},false);
+    if(!pts.length) return;
+    goToIdx(pts[0].index);
+  });
+  canvas.addEventListener('mouseleave', () => {
+    if(mapLockedIdx !== null) {
+      /* Map click had locked a position — restore it so crosshair stays visible */
+      syncX(mapLockedIdx);
+    } else {
+      Object.values(CH).forEach(c => { c._xi=null; c.update('none'); });
+    }
+  });
+  /* Double-click resets zoom */
+  canvas.addEventListener('dblclick', resetZoom);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Build all charts
+═══════════════════════════════════════════════════════════════ */
+function buildAll() {
+  const step3d = col('gps_disp_3d_step_m');
+  const cum3d  = step3d.reduce((a,v) => { a.push((a[a.length-1]||0)+(v||0)); return a; },[]);
+
+  try {
+    makeChart('c-spd',[
+      ds('GPS 2D',   col('gps_speed_ms'),     CL.a),
+      ds('GPS 3D',   col('gps_speed_3d_ms'),  CL.a,false,true),
+      ds('Fused',    col('fused_speed_ms'),   CL.b),
+      ds('Fused 3D', col('fused_speed_3d_ms'),CL.b,false,true),
+      ds('Vertical', col('vertical_speed_ms'),CL.c),
+    ], baseOpts('m/s'));
+
+    makeChart('c-vel',[
+      ds('GPS East',    col('gps_vel_east_ms'),    CL.a),
+      ds('GPS North',   col('gps_vel_north_ms'),   CL.c),
+      ds('GPS Up',      col('gps_vel_vertical_ms'),CL.b),
+      ds('Fused East',  col('fused_vel_east_ms'),  CL.a,false,true),
+      ds('Fused North', col('fused_vel_north_ms'), CL.c,false,true),
+    ], baseOpts('m/s'));
+
+    makeChart('c-gacc',[
+      ds('Forward',  col('gps_accel_forward'),  CL.a),
+      ds('Lateral',  col('gps_accel_lateral'),  CL.c),
+      ds('Vertical', col('gps_accel_vertical'), CL.b),
+      ds('|a| mag',  col('gps_accel_mag'),      CL.e,false,true),
+    ], baseOpts('m/s²'));
+
+    makeChart('c-iacc',[
+      ds('Forward',  col('accel_forward'),  CL.a),
+      ds('Lateral',  col('accel_lateral'),  CL.c),
+      ds('Vertical', col('accel_vertical'), CL.b),
+      ds('|a| mag',  col('lin_accel_mag'),  CL.e,false,true),
+    ], baseOpts('m/s²'));
+
+    makeChart('c-alt',[
+      ds('GPS alt',   col('altitude_m'),  CL.a,true),
+      ds('Fused alt', col('fused_alt_m'), CL.b),
+    ], baseOpts('m'));
+
+    makeChart('c-dsp',[
+      ds('GPS horiz', col('gps_disp_cumul_m'),  CL.a),
+      ds('GPS 3D',    cum3d,                    CL.a,false,true),
+      ds('Fused',     col('fused_disp_cumul_m'),CL.b),
+      ds('IMU (ref)', col('imu_disp_cumul_m'),  CL.g),
+    ], baseOpts('m'));
+
+    makeChart('c-gvec',[
+      ds('gx',col('gravity_est_x'),CL.d),
+      ds('gy',col('gravity_est_y'),CL.c),
+      ds('gz',col('gravity_est_z'),CL.b),
+    ], baseOpts('m/s²'));
+
+    const gOpts = {
+      ...baseOpts('m/s²'),
+      scales: {
+        ...baseOpts('m/s²').scales,
+        y2:{type:'linear',position:'right',min:-0.5,max:2.5,
+          grid:{drawOnChartArea:false},
+          ticks:{color:CL.e,stepSize:1,callback:v=>(['FRZ','STA','MOV'][v]??'')},
+          title:{display:true,text:'Mode',color:CL.e,font:{size:9}}}
+      }
+    };
+    makeChart('c-gmag',[
+      ds('|g| est',col('gravity_est_mag'),CL.a),
+      {label:'G_STD',data:DATA.map(()=>G_STD),spanGaps:true,
+        borderColor:CL.d,borderWidth:1,borderDash:[5,3],pointRadius:0,tension:0,fill:false},
+      {label:'Mode',data:DATA.map(d=>{const v=+d.grav_update_mode;return isFinite(v)?v:null;}),
+        spanGaps:true,borderColor:CL.e,borderWidth:1,borderDash:[2,4],
+        pointRadius:0,tension:0,fill:false,yAxisID:'y2'},
+    ], gOpts);
+
+    st(`${DATA.length} rows · ${Object.keys(CH).length} charts`);
+    updInsp(0);
+  } catch(err) {
+    console.error('buildAll:', err);
+    st('Chart error: '+err.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tabs
+   KEY FIX: resize ALL canvases on tab switch using computeCanvasW()
+   rather than .closest('.cc').clientWidth (which is 0 for hidden pages)
+═══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+    document.querySelectorAll('.cp').forEach(p=>p.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('p-'+btn.dataset.p).classList.add('on');
+    if(DATA.length) {
+      /* rAF ensures the newly-shown .cp has display:grid before we resize */
+      requestAnimationFrame(() => {
+        const w=computeCanvasW();
+        Object.entries(CH).forEach(([id,ch]) => {
+          const canvas=document.getElementById(id);
+          if(!canvas) return;
+          if(canvas.width!==w || canvas.height!==CANVAS_H) {
+            canvas.width=w; canvas.height=CANVAS_H;
+            canvas.style.width=w+'px'; canvas.style.height=CANVAS_H+'px';
+            ch.resize(w,CANVAS_H);
+          }
+        });
+        /* Re-apply zoom state so newly-visible charts match current range */
+        if(isZoomed) {
+          const src=Object.values(CH)[0];
+          if(src) onZoomOrPan(src);
+        }
+      });
+    }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Timeline slider → crosshair + map marker + inspector
+═══════════════════════════════════════════════════════════════ */
+document.getElementById('tls').addEventListener('input', e => {
+  goToIdx(+e.target.value);
+});
+/* updSlider is no longer needed — goToIdx handles the slider display */
+
+/* ═══════════════════════════════════════════════════════════════
+   Map
+   KEY FIX: populateMap is called AFTER sizeLayout, so mapObj
+   has correct pixel dimensions when fitBounds runs.
+   A second invalidateSize+fitBounds call after a short delay
+   catches any remaining tile-render latency.
+═══════════════════════════════════════════════════════════════ */
+window.addEventListener('load', () => {
+  mapObj=L.map('map',{zoomControl:false,attributionControl:false});
+  L.control.zoom({position:'bottomright'}).addTo(mapObj);
+  swapTile();
+});
+
+function populateMap() {
+  mapAllPts = DATA
+    .map(d=>[+d.latitude,+d.longitude])
+    .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
+  if(!mapAllPts.length) return;
+  if(mapTrack)  mapObj.removeLayer(mapTrack);
+  if(mapMarker) mapObj.removeLayer(mapMarker);
+
+  mapTrack=L.polyline(mapAllPts,{color:CL.a,weight:2.5,opacity:.85}).addTo(mapObj);
+
+  /* Click anywhere on the track → find nearest data point → sync everything.
+     Uses squared planar distance (valid for the small areas of a motorbike ride). */
+  mapTrack.on('click', function(e) {
+    const clat=e.latlng.lat, clon=e.latlng.lng;
+    let best=0, bestD=Infinity;
+    DATA.forEach((d,i) => {
+      const la=+d.latitude, lo=+d.longitude;
+      if(!isFinite(la)||!isFinite(lo)) return;
+      const dd=(la-clat)*(la-clat)+(lo-clon)*(lo-clon);
+      if(dd<bestD){ bestD=dd; best=i; }
+    });
+    goToIdx(best, true);   /* fromMap=true → locks the crosshair position */
+  });
+
+  /* Fit bounds immediately (layout is already sized) */
+  mapObj.invalidateSize();
+  mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
+
+  /* Second fit after tiles have loaded — handles edge cases */
+  setTimeout(() => {
+    mapObj.invalidateSize();
+    mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
+  }, 500);
+
+  L.circleMarker(mapAllPts[0],{radius:5,color:CL.b,fillColor:CL.b,fillOpacity:1,weight:2})
+    .addTo(mapObj).bindTooltip('Start',{direction:'right'});
+
+  mapMarker=L.marker(mapAllPts[0],{icon:L.divIcon({
+    className:'',
+    html:`<div style="width:10px;height:10px;border-radius:50%;background:${CL.a};border:2px solid var(--bg);box-shadow:0 0 7px ${CL.a}bb"></div>`,
+    iconSize:[10,10],iconAnchor:[5,5]
+  })}).addTo(mapObj);
+}
+
+function updMap(idx) {
+  if(!mapMarker||!DATA[idx]) return;
+  const la=+DATA[idx].latitude, lo=+DATA[idx].longitude;
+  if(isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0)) mapMarker.setLatLng([la,lo]);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Inspector
+═══════════════════════════════════════════════════════════════ */
+const row=(l,v,c='')=>
+  `<div class="ir"><span class="il">${l}</span><span class="iv ${c}">${v}</span></div>`;
+const mBadge=m=>{
+  const t=['FROZEN','STATIC','MOVING'],c=['mb0','mb1','mb2'],i=+m;
+  return `<span class="mb ${c[i]??'mb2'}">${t[i]??'?'}</span>`;
+};
+function updInsp(idx) {
+  const d=DATA[idx]; if(!d) return;
+  document.getElementById('ic').innerHTML=`
+    <div class="ig"><div class="igt">Time</div>
+      ${row('Elapsed',fmtTime(d.elapsed_s),'a1')}
+      ${row('Timestamp',String(d.received_at).slice(11,19))}
+      ${row('Δt',fmt(d.dt_s,3)+' s')}
+      ${row('GPS fix',d.gps_fix_valid?'<span class="a2">✓</span>':'<span class="a4">✗</span>')}
+    </div>
+    <div class="ig"><div class="igt">Velocity</div>
+      ${row('GPS 2D',fmt(d.gps_speed_ms,2)+' m/s','a1')}
+      ${row('GPS 3D',fmt(d.gps_speed_3d_ms,2)+' m/s','a1')}
+      ${row('Fused',fmt(d.fused_speed_ms,2)+' m/s','a2')}
+      ${row('Fused 3D',fmt(d.fused_speed_3d_ms,2)+' m/s','a2')}
+      ${row('Vertical',fmt(d.vertical_speed_ms,3)+' m/s','a3')}
+      ${row('Vel E',fmt(d.gps_vel_east_ms,3)+' m/s')}
+      ${row('Vel N',fmt(d.gps_vel_north_ms,3)+' m/s')}
+      ${row('Vel Up',fmt(d.gps_vel_vertical_ms,3)+' m/s')}
+    </div>
+    <div class="ig"><div class="igt">GPS Acceleration</div>
+      ${row('Forward',fmt(d.gps_accel_forward,4)+' m/s²','a1')}
+      ${row('Lateral',fmt(d.gps_accel_lateral,4)+' m/s²','a3')}
+      ${row('Vertical',fmt(d.gps_accel_vertical,4)+' m/s²','a2')}
+      ${row('|a| mag',fmt(d.gps_accel_mag,4)+' m/s²','a5')}
+    </div>
+    <div class="ig"><div class="igt">IMU Acceleration</div>
+      ${row('Forward',fmt(d.accel_forward,4)+' m/s²','a1')}
+      ${row('Lateral',fmt(d.accel_lateral,4)+' m/s²','a3')}
+      ${row('Vertical',fmt(d.accel_vertical,4)+' m/s²','a2')}
+      ${row('|a| mag',fmt(d.lin_accel_mag,4)+' m/s²','a5')}
+    </div>
+    <div class="ig"><div class="igt">Position</div>
+      ${row('Altitude',fmt(d.altitude_m,1)+' m','a1')}
+      ${row('Fused alt',fmt(d.fused_alt_m,1)+' m','a2')}
+      ${row('Δalt step',fmt(d.delta_alt_gps_step_m,2)+' m')}
+      ${row('Δalt cumul',fmt(d.delta_alt_gps_cumul_m,2)+' m')}
+      ${row('GPS disp',fmt((+d.gps_disp_cumul_m||0)/1000,3)+' km')}
+      ${row('Fused disp',fmt((+d.fused_disp_cumul_m||0)/1000,3)+' km','a2')}
+      ${row('Lat',fmt(d.latitude,6))} ${row('Lon',fmt(d.longitude,6))}
+      ${row('Bearing',fmt(d.gps_bearing_deg,1)+'°')}
+    </div>
+    <div class="ig"><div class="igt">Gravity Tracker</div>
+      ${row('gx',fmt(d.gravity_est_x,4)+' m/s²')}
+      ${row('gy',fmt(d.gravity_est_y,4)+' m/s²')}
+      ${row('gz',fmt(d.gravity_est_z,4)+' m/s²')}
+      ${row('|g|',fmt(d.gravity_est_mag,4)+' m/s²','a1')}
+      ${row('Mode',mBadge(d.grav_update_mode))}
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Session stats
+═══════════════════════════════════════════════════════════════ */
+function updateStats() {
+  const n=DATA.length, last=DATA[n-1]||{};
+  const dalt=+(last.delta_alt_gps_cumul_m||0);
+  const maxV=DATA.reduce((m,d)=>Math.max(m,isFinite(+d.gps_speed_ms)?+d.gps_speed_ms:0),0);
+  document.getElementById('cr').innerHTML=`<b>${n}</b> rows`;
+  document.getElementById('cd').innerHTML=`dur <b>${fmtTime(last.elapsed_s)}</b>`;
+  document.getElementById('ck').innerHTML=`dist <b>${fmt((last.fused_disp_cumul_m||0)/1000,2)} km</b>`;
+  document.getElementById('ca').innerHTML=`Δalt <b>${dalt>=0?'+':''}${dalt.toFixed(0)} m</b>`;
+  document.getElementById('cs').innerHTML=`max <b>${maxV.toFixed(1)} m/s</b>`;
+  const sl=document.getElementById('tls'); sl.max=n-1; sl.value=0;
+  document.getElementById('tdisp').textContent = XLBL[0] || '0:00';
+}
+
+window.addEventListener('resize', () => {
+  if(!DATA.length) return;
+  sizeLayout();
+  const w=computeCanvasW();
+  Object.entries(CH).forEach(([id,ch]) => {
+    const canvas=document.getElementById(id);
+    if(!canvas) return;
+    canvas.width=w; canvas.height=CANVAS_H;
+    canvas.style.width=w+'px'; canvas.style.height=CANVAS_H+'px';
+    ch.resize(w,CANVAS_H);
+  });
+  if(mapObj){ mapObj.invalidateSize(); fitMapToTrack(); }
+});
+
+function fitMapToTrack() {
+  if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
+}
+</script>
+</body>
+</html>
