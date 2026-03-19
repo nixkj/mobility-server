@@ -1,32 +1,34 @@
 """
-server.py  —  SensaGram receiver
+server.py  —  SensaGram receiver  (multi-device edition)
 
-Standard mode  : receives all sensor types, logs each to its own CSV file
-                 (one file per sensor type) and/or prints to console.
+Supports up to MAX_DEVICES simultaneous SensaGram devices.  Each device is
+identified by its source IP address — no changes to the Android app are
+required.  Every device gets its own CSV file and its own GPS/sensor state so
+there is no cross-contamination between devices.
+
+Standard mode  : receives all sensor types, logs each sensor to its own CSV
+                 file per device  (e.g.  run1_192_168_1_5_accelerometer.csv).
 
 Mobility mode  : --mobility
-                 Only processes GPS + accelerometer. Writes a single combined
-                 CSV where each row is one accelerometer event paired with the
-                 most recently received GPS fix (blank if none yet).
+                 GPS + accelerometer only.  One combined CSV per device
+                 (e.g.  sensagram_192_168_1_5.csv).
 
-Logging behaviour:
-  - Operational messages (startup, connections, disconnections, errors) are
-    ALWAYS written to server.log AND printed to the console.
-  - Sensor data is printed to the console ONLY when no CSV is active.
-    When CSV logging is on, sensor data goes to the CSV file only — the
-    console stays clean so you can watch operational messages without noise.
+Transport notes
+  TCP  : each TCP connection is already a separate thread with a known addr.
+  UDP  : udpserver.py now passes (data, addr) to the callback so the IP can
+         be extracted from addr[0].
 
-Usage examples:
+Usage examples
     python3 server.py                                 # UDP, console only
     python3 server.py --tcp                           # TCP, console only
-    python3 server.py --tcp --csv                     # TCP + per-sensor CSVs, quiet console
-    python3 server.py --csv run1                      # UDP + run1_*.csv, quiet console
+    python3 server.py --tcp --csv                     # TCP + per-device CSVs
+    python3 server.py --csv run1                      # UDP + run1_<ip>_*.csv
     python3 server.py --port 9000 --tcp --csv run1
 
-    python3 server.py --mobility                      # UDP, console only
-    python3 server.py --mobility --tcp                # TCP, console only
-    python3 server.py --mobility --tcp --csv          # TCP + sensagram.csv, quiet console
-    python3 server.py --mobility --tcp --csv my_run   # TCP + my_run.csv, quiet console
+    python3 server.py --mobility
+    python3 server.py --mobility --tcp
+    python3 server.py --mobility --tcp --csv
+    python3 server.py --mobility --tcp --csv my_run   # my_run_<ip>.csv
 """
 
 from udpserver import UDPServer
@@ -35,37 +37,100 @@ from datetime import datetime
 
 
 # =========================================================================== #
+# Configuration
+# =========================================================================== #
+
+MAX_DEVICES = 10   # hard cap on simultaneous devices
+
+
+# =========================================================================== #
 # Logging setup
 # =========================================================================== #
-# Configured at the bottom of the file once args are parsed, so we know
-# whether CSV is active.  Functions below reference the module-level `logger`
-# and `csv_active` flag, both set in the entry-point section.
 
 logger     = logging.getLogger("sensagram")
-csv_active = False   # set True when any CSV output is configured
-
-# Handler-level lock: prevents two simultaneous TCP client threads from
-# writing to the same CSV row or corrupting shared state on reconnect.
-_handler_lock = threading.Lock()
+csv_active = False
 
 
 def log(msg):
-    """Operational message — always written to server.log AND the console."""
     logger.info(msg)
 
 
-def data_print(msg):
-    """Sensor data line — printed to console only when no CSV is active."""
+def data_print(msg, addr=None):
+    """Print sensor data to console only when no CSV is active."""
     if not csv_active:
-        print(msg)
+        prefix = f"[{addr}] " if addr else ""
+        print(prefix + msg)
 
 
 # =========================================================================== #
-# Shared formatting helpers
+# Device registry — thread-safe, capped at MAX_DEVICES
+# =========================================================================== #
+
+class DeviceRegistry:
+    """
+    Tracks which device keys have been seen.  Once MAX_DEVICES unique keys
+    are registered any new key is silently dropped with a log warning.
+
+    The key is a UUID stamped by the app (preferred) or source IP (fallback).
+    Call get_or_register(key) before creating per-device state.
+    Returns the key on success, None if the cap has been reached.
+    """
+
+    def __init__(self):
+        self._known: set[str] = set()
+        self._lock  = threading.Lock()
+
+    def get_or_register(self, key: str) -> "str | None":
+        with self._lock:
+            if key in self._known:
+                return key
+            if len(self._known) >= MAX_DEVICES:
+                log(f"[REGISTRY] Device limit ({MAX_DEVICES}) reached — "
+                    f"ignoring {key}")
+                return None
+            self._known.add(key)
+            log(f"[REGISTRY] New device: {key}  "
+                f"({len(self._known)}/{MAX_DEVICES} active)")
+            return key
+
+    def active(self) -> list[str]:
+        with self._lock:
+            return sorted(self._known)
+
+
+def _device_key(jsonData: dict, addr) -> str:
+    """
+    Return a stable identifier for the sending device.
+
+    Preference order:
+      1. ``device_id`` field in the JSON payload — a UUID generated once by the
+         Android app and persisted in DataStore.  Survives IP changes, LTE
+         reconnects, NAT rebinds, and app restarts.
+      2. Source IP address — fallback for older app versions that do not yet
+         send ``device_id``.  Unreliable on mobile networks but better than
+         nothing.
+    """
+    did = str(jsonData.get("device_id", "")).strip()
+    if did:
+        return did
+    return addr[0] if isinstance(addr, tuple) else str(addr)
+
+
+def _key_to_tag(key: str) -> str:
+    """
+    Convert a device key to a filesystem-safe string for use in filenames.
+    UUID : '550e8400-e29b-41d4-a716-446655440000'
+        -> '550e8400_e29b_41d4_a716_446655440000'
+    IP   : '192.168.1.5' -> '192_168_1_5'
+    """
+    return key.replace("-", "_").replace(".", "_").replace(":", "_")
+
+
+# =========================================================================== #
+# Shared formatting helpers  (unchanged from original)
 # =========================================================================== #
 
 def _clean_prefix(prefix):
-    """Strip a trailing .csv extension from a user-supplied prefix/filename."""
     return prefix[:-4] if prefix.endswith(".csv") else prefix
 
 
@@ -81,62 +146,72 @@ def fmt1(values):
     return str(values)
 
 
-def print_stats(label, jsonData, formatter=fmt3):
-    """Print aggregated sensor stats — suppressed when CSV is active."""
+def print_stats(label, jsonData, formatter=fmt3, addr=None):
     values = jsonData.get("values")
     mins   = jsonData.get("min")
     maxs   = jsonData.get("max")
     avg    = jsonData.get("avg")
     stddev = jsonData.get("stdDev")
-    data_print(f"  {label}")
-    if values is not None: data_print(f"    current : {formatter(values)}")
-    if mins   is not None: data_print(f"    min     : {formatter(mins)}")
-    if maxs   is not None: data_print(f"    max     : {formatter(maxs)}")
-    if avg    is not None: data_print(f"    avg     : {formatter(avg)}")
-    if stddev is not None: data_print(f"    std-dev : {formatter(stddev)}")
+    data_print(f"  {label}", addr)
+    if values is not None: data_print(f"    current : {formatter(values)}", addr)
+    if mins   is not None: data_print(f"    min     : {formatter(mins)}", addr)
+    if maxs   is not None: data_print(f"    max     : {formatter(maxs)}", addr)
+    if avg    is not None: data_print(f"    avg     : {formatter(avg)}", addr)
+    if stddev is not None: data_print(f"    std-dev : {formatter(stddev)}", addr)
 
 
 # =========================================================================== #
-# STANDARD MODE — per-sensor CSV logging
+# STANDARD MODE — per-sensor, per-device CSV logging
 # =========================================================================== #
 
 class StandardMode:
     """
-    Receives all sensor types, optionally logs each to its own CSV file,
-    and prints to the console when no CSV is active.
+    Receives all sensor types.  Each (device, sensor_type) pair gets its own
+    CSV file.  File naming: {prefix}_{ip_tag}_{sensor_key}.csv
+
+    handle(data, addr) is the entry point.  addr may be a (ip, port) tuple
+    (UDP) or a plain ip string (TCP).
     """
 
     def __init__(self, csv_prefix=None):
-        self._prefix  = _clean_prefix(csv_prefix) if csv_prefix else None
-        self._writers = {}
-        self._files   = {}
+        self._prefix   = _clean_prefix(csv_prefix) if csv_prefix else None
+        self._registry = DeviceRegistry()
+        # keyed by (ip, sensor_key) → csv.DictWriter
+        self._writers: dict[tuple, csv.DictWriter] = {}
+        self._files:   dict[tuple, object]         = {}
+        self._lock     = threading.Lock()
 
     # ------------------------------------------------------------------ #
     # CSV helpers
     # ------------------------------------------------------------------ #
 
-    def _get_writer(self, sensor_key, fieldnames):
-        if sensor_key not in self._writers:
-            filename = f"{self._prefix}_{sensor_key}.csv"
-            f = open(filename, "w", newline="")
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            self._files[sensor_key]   = f
-            self._writers[sensor_key] = writer
-            log(f"[CSV] {sensor_key} → {filename}")
-        return self._writers[sensor_key]
+    def _get_writer(self, device_key, sensor_key, fieldnames):
+        key = (device_key, sensor_key)
+        with self._lock:
+            if key not in self._writers:
+                tag      = _key_to_tag(device_key)
+                filename = f"{self._prefix}_{tag}_{sensor_key}.csv"
+                f = open(filename, "w", newline="")
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                self._files[key]   = f
+                self._writers[key] = writer
+                log(f"[CSV] {device_key} / {sensor_key} → {filename}")
+            return self._writers[key], self._files[key]
 
-    def _log_xyz(self, sensor_key, received_at, timestamp, jsonData):
-        fields = ["received_at", "timestamp",
-                  "x", "y", "z",
-                  "min_x", "min_y", "min_z",
-                  "max_x", "max_y", "max_z",
-                  "avg_x", "avg_y", "avg_z",
-                  "stddev_x", "stddev_y", "stddev_z"]
-        writer = self._get_writer(sensor_key, fields)
+    def _log_xyz(self, device_key, sensor_key, received_at, timestamp, jsonData):
+        fields = [
+            "received_at", "timestamp",
+            "x", "y", "z",
+            "min_x", "min_y", "min_z",
+            "max_x", "max_y", "max_z",
+            "avg_x", "avg_y", "avg_z",
+            "stddev_x", "stddev_y", "stddev_z",
+        ]
+        writer, f = self._get_writer(device_key, sensor_key, fields)
 
-        def u(key):
-            v = jsonData.get(key)
+        def u(k):
+            v = jsonData.get(k)
             return v if v is not None else [None, None, None]
 
         v, mn, mx, av, sd = (u(k) for k in ("values", "min", "max", "avg", "stdDev"))
@@ -148,14 +223,14 @@ class StandardMode:
             "avg_x": av[0], "avg_y": av[1], "avg_z": av[2],
             "stddev_x": sd[0], "stddev_y": sd[1], "stddev_z": sd[2],
         })
-        self._files[sensor_key].flush()
+        f.flush()
 
-    def _log_scalar(self, sensor_key, received_at, timestamp, jsonData):
+    def _log_scalar(self, device_key, sensor_key, received_at, timestamp, jsonData):
         fields = ["received_at", "timestamp", "value", "min", "max", "avg", "stddev"]
-        writer = self._get_writer(sensor_key, fields)
+        writer, f = self._get_writer(device_key, sensor_key, fields)
 
-        def first(key):
-            v = jsonData.get(key)
+        def first(k):
+            v = jsonData.get(k)
             return v[0] if v else None
 
         writer.writerow({
@@ -164,13 +239,15 @@ class StandardMode:
             "max":    first("max"),    "avg": first("avg"),
             "stddev": first("stdDev"),
         })
-        self._files[sensor_key].flush()
+        f.flush()
 
-    def _log_gps(self, received_at, jsonData):
-        fields = ["received_at", "gps_time", "latitude", "longitude", "altitude",
-                  "speed", "bearing", "accuracy",
-                  "speed_accuracy", "bearing_accuracy", "vertical_accuracy"]
-        writer = self._get_writer("gps", fields)
+    def _log_gps(self, device_key, received_at, jsonData):
+        fields = [
+            "received_at", "gps_time", "latitude", "longitude", "altitude",
+            "speed", "bearing", "accuracy",
+            "speed_accuracy", "bearing_accuracy", "vertical_accuracy",
+        ]
+        writer, f = self._get_writer(device_key, "gps", fields)
         writer.writerow({
             "received_at":       received_at,
             "gps_time":          jsonData.get("time"),
@@ -184,106 +261,115 @@ class StandardMode:
             "bearing_accuracy":  jsonData.get("bearingAccuracyDegrees"),
             "vertical_accuracy": jsonData.get("verticalAccuracyMeters"),
         })
-        self._files["gps"].flush()
+        f.flush()
 
     # ------------------------------------------------------------------ #
     # Packet handler
     # ------------------------------------------------------------------ #
 
-    def handle(self, data):
+    def handle(self, data, addr):
+        """
+        Resolve the device key from the JSON payload first (stable UUID stamped
+        by the app), falling back to source IP for older app versions.
+        """
         jsonData    = json.loads(data)
+        device_key  = _device_key(jsonData, addr)
+
+        if self._registry.get_or_register(device_key) is None:
+            return   # device limit reached
+
         sensorType  = jsonData["type"]
         timestamp   = jsonData.get("timestamp")
         received_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         do_csv      = self._prefix is not None
 
         if sensorType == "android.sensor.accelerometer":
-            data_print(f"[ACCELEROMETER]  ts={timestamp}")
-            print_stats("acceleration (m/s²)", jsonData)
-            if do_csv: self._log_xyz("accelerometer", received_at, timestamp, jsonData)
+            data_print(f"[ACCELEROMETER]  ts={timestamp}", device_key)
+            print_stats("acceleration (m/s²)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "accelerometer", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.gyroscope":
-            data_print(f"[GYROSCOPE]  ts={timestamp}")
-            print_stats("angular velocity (rad/s)", jsonData)
-            if do_csv: self._log_xyz("gyroscope", received_at, timestamp, jsonData)
+            data_print(f"[GYROSCOPE]  ts={timestamp}", device_key)
+            print_stats("angular velocity (rad/s)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "gyroscope", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.gravity":
-            data_print(f"[GRAVITY]  ts={timestamp}")
-            print_stats("gravity (m/s²)", jsonData)
-            if do_csv: self._log_xyz("gravity", received_at, timestamp, jsonData)
+            data_print(f"[GRAVITY]  ts={timestamp}", device_key)
+            print_stats("gravity (m/s²)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "gravity", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.linear_acceleration":
-            data_print(f"[LINEAR ACCELERATION]  ts={timestamp}")
-            print_stats("linear accel (m/s²)", jsonData)
-            if do_csv: self._log_xyz("linear_acceleration", received_at, timestamp, jsonData)
+            data_print(f"[LINEAR ACCELERATION]  ts={timestamp}", device_key)
+            print_stats("linear accel (m/s²)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "linear_acceleration", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.rotation_vector":
-            data_print(f"[ROTATION VECTOR]  ts={timestamp}")
-            print_stats("rotation vector", jsonData)
-            if do_csv: self._log_xyz("rotation_vector", received_at, timestamp, jsonData)
+            data_print(f"[ROTATION VECTOR]  ts={timestamp}", device_key)
+            print_stats("rotation vector", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "rotation_vector", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.game_rotation_vector":
-            data_print(f"[GAME ROTATION VECTOR]  ts={timestamp}")
-            print_stats("game rotation vector", jsonData)
-            if do_csv: self._log_xyz("game_rotation_vector", received_at, timestamp, jsonData)
+            data_print(f"[GAME ROTATION VECTOR]  ts={timestamp}", device_key)
+            print_stats("game rotation vector", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "game_rotation_vector", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.magnetic_field":
-            data_print(f"[MAGNETIC FIELD]  ts={timestamp}")
-            print_stats("magnetic field (µT)", jsonData)
-            if do_csv: self._log_xyz("magnetic_field", received_at, timestamp, jsonData)
+            data_print(f"[MAGNETIC FIELD]  ts={timestamp}", device_key)
+            print_stats("magnetic field (µT)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "magnetic_field", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.magnetic_field_uncalibrated":
-            data_print(f"[MAGNETIC FIELD UNCALIBRATED]  ts={timestamp}")
-            print_stats("mag uncal (µT)", jsonData)
-            if do_csv: self._log_xyz("magnetic_field_uncalibrated", received_at, timestamp, jsonData)
+            data_print(f"[MAGNETIC FIELD UNCALIBRATED]  ts={timestamp}", device_key)
+            print_stats("mag uncal (µT)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "magnetic_field_uncalibrated", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.gyroscope_uncalibrated":
-            data_print(f"[GYROSCOPE UNCALIBRATED]  ts={timestamp}")
-            print_stats("gyro uncal (rad/s)", jsonData)
-            if do_csv: self._log_xyz("gyroscope_uncalibrated", received_at, timestamp, jsonData)
+            data_print(f"[GYROSCOPE UNCALIBRATED]  ts={timestamp}", device_key)
+            print_stats("gyro uncal (rad/s)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "gyroscope_uncalibrated", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.accelerometer_uncalibrated":
-            data_print(f"[ACCELEROMETER UNCALIBRATED]  ts={timestamp}")
-            print_stats("accel uncal (m/s²)", jsonData)
-            if do_csv: self._log_xyz("accelerometer_uncalibrated", received_at, timestamp, jsonData)
+            data_print(f"[ACCELEROMETER UNCALIBRATED]  ts={timestamp}", device_key)
+            print_stats("accel uncal (m/s²)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "accelerometer_uncalibrated", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.orientation":
-            data_print(f"[ORIENTATION]  ts={timestamp}")
-            print_stats("orientation (°)", jsonData)
-            if do_csv: self._log_xyz("orientation", received_at, timestamp, jsonData)
+            data_print(f"[ORIENTATION]  ts={timestamp}", device_key)
+            print_stats("orientation (°)", jsonData, addr=device_key)
+            if do_csv: self._log_xyz(device_key, "orientation", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.proximity":
-            data_print(f"[PROXIMITY]  ts={timestamp}")
-            print_stats("proximity (cm)", jsonData, formatter=fmt1)
-            if do_csv: self._log_scalar("proximity", received_at, timestamp, jsonData)
+            data_print(f"[PROXIMITY]  ts={timestamp}", device_key)
+            print_stats("proximity (cm)", jsonData, formatter=fmt1, addr=device_key)
+            if do_csv: self._log_scalar(device_key, "proximity", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.step_counter":
             values = jsonData.get("values", [0])
-            data_print(f"[STEP COUNTER]  ts={timestamp}  steps={values[0]:.0f}")
-            if do_csv: self._log_scalar("step_counter", received_at, timestamp, jsonData)
+            data_print(f"[STEP COUNTER]  ts={timestamp}  steps={values[0]:.0f}", device_key)
+            if do_csv: self._log_scalar(device_key, "step_counter", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.step_detector":
-            data_print(f"[STEP DETECTED]  ts={timestamp}")
+            data_print(f"[STEP DETECTED]  ts={timestamp}", device_key)
 
         elif sensorType == "android.sensor.light":
-            data_print(f"[LIGHT]  ts={timestamp}")
-            print_stats("illuminance (lux)", jsonData, formatter=fmt1)
-            if do_csv: self._log_scalar("light", received_at, timestamp, jsonData)
+            data_print(f"[LIGHT]  ts={timestamp}", device_key)
+            print_stats("illuminance (lux)", jsonData, formatter=fmt1, addr=device_key)
+            if do_csv: self._log_scalar(device_key, "light", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.pressure":
-            data_print(f"[PRESSURE]  ts={timestamp}")
-            print_stats("pressure (hPa)", jsonData, formatter=fmt1)
-            if do_csv: self._log_scalar("pressure", received_at, timestamp, jsonData)
+            data_print(f"[PRESSURE]  ts={timestamp}", device_key)
+            print_stats("pressure (hPa)", jsonData, formatter=fmt1, addr=device_key)
+            if do_csv: self._log_scalar(device_key, "pressure", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.ambient_temperature":
-            data_print(f"[TEMPERATURE]  ts={timestamp}")
-            print_stats("temperature (°C)", jsonData, formatter=fmt1)
-            if do_csv: self._log_scalar("ambient_temperature", received_at, timestamp, jsonData)
+            data_print(f"[TEMPERATURE]  ts={timestamp}", device_key)
+            print_stats("temperature (°C)", jsonData, formatter=fmt1, addr=device_key)
+            if do_csv: self._log_scalar(device_key, "ambient_temperature", received_at, timestamp, jsonData)
 
         elif sensorType == "android.sensor.relative_humidity":
-            data_print(f"[HUMIDITY]  ts={timestamp}")
-            print_stats("relative humidity (%)", jsonData, formatter=fmt1)
-            if do_csv: self._log_scalar("relative_humidity", received_at, timestamp, jsonData)
+            data_print(f"[HUMIDITY]  ts={timestamp}", device_key)
+            print_stats("relative humidity (%)", jsonData, formatter=fmt1, addr=device_key)
+            if do_csv: self._log_scalar(device_key, "relative_humidity", received_at, timestamp, jsonData)
 
         elif sensorType == "android.gps":
             lat      = jsonData["latitude"]
@@ -293,37 +379,24 @@ class StandardMode:
             bearing  = jsonData["bearing"]
             accuracy = jsonData["accuracy"]
             gps_time = jsonData["time"]
-            data_print(f"[GPS]")
-            data_print(f"  lat={lat:.6f}  lon={lon:.6f}  alt={alt:.1f} m")
-            data_print(f"  speed={speed:.2f} m/s  bearing={bearing:.1f}°  accuracy={accuracy:.1f} m")
-            data_print(f"  time={gps_time}")
-            if "speedAccuracyMetersPerSecond" in jsonData:
-                data_print(
-                    f"  speed_accuracy={jsonData['speedAccuracyMetersPerSecond']:.3f} m/s"
-                    f"  bearing_accuracy={jsonData.get('bearingAccuracyDegrees', '?'):.2f}°"
-                    f"  vertical_accuracy={jsonData.get('verticalAccuracyMeters', '?'):.2f} m"
-                )
-            if do_csv: self._log_gps(received_at, jsonData)
+            data_print(f"[GPS]", device_key)
+            data_print(f"  lat={lat:.6f}  lon={lon:.6f}  alt={alt:.1f} m", device_key)
+            data_print(f"  speed={speed:.2f} m/s  bearing={bearing:.1f}°  accuracy={accuracy:.1f} m", device_key)
+            data_print(f"  time={gps_time}", device_key)
+            if do_csv: self._log_gps(device_key, received_at, jsonData)
 
         else:
             values = jsonData.get("values")
-            mins   = jsonData.get("min")
-            maxs   = jsonData.get("max")
-            avg    = jsonData.get("avg")
-            stddev = jsonData.get("stdDev")
-            data_print(f"[{sensorType}]  ts={timestamp}")
-            data_print(f"  values={values}")
-            if mins   is not None: data_print(f"  min   ={mins}")
-            if maxs   is not None: data_print(f"  max   ={maxs}")
-            if avg    is not None: data_print(f"  avg   ={avg}")
-            if stddev is not None: data_print(f"  stdev ={stddev}")
-            if do_csv: self._log_xyz(sensorType.split(".")[-1], received_at, timestamp, jsonData)
+            data_print(f"[{sensorType}]  ts={timestamp}", device_key)
+            data_print(f"  values={values}", device_key)
+            if do_csv:
+                self._log_xyz(device_key, sensorType.split(".")[-1], received_at, timestamp, jsonData)
 
-        data_print("")   # blank line separator between packets
+        data_print("", device_key)
 
 
 # =========================================================================== #
-# MOBILITY MODE — GPS + accelerometer → single combined CSV
+# MOBILITY MODE — GPS + accelerometer → one combined CSV per device
 # =========================================================================== #
 
 MOBILITY_CSV_FIELDS = [
@@ -340,31 +413,71 @@ MOBILITY_CSV_FIELDS = [
 ]
 
 
+class _DeviceMobilityState:
+    """Holds per-device state for MobilityMode."""
+    __slots__ = ("latest_gps", "csv_writer", "csv_file")
+
+    def __init__(self):
+        self.latest_gps  = None
+        self.csv_writer  = None
+        self.csv_file    = None
+
+
 class MobilityMode:
     """
-    Receives GPS and accelerometer only.
+    GPS + accelerometer only.  One CSV per device.
 
-    CSV row trigger: every ACCELEROMETER packet.
-    Each row pairs the accelerometer stats with the most recently received GPS
-    fix (GPS columns left blank if no fix has arrived yet).  Rows are written
-    at the app's send interval regardless of GPS availability.
-
-    GPS packets update an internal cache only; they do not write a CSV row.
+    CSV row trigger  : every ACCELEROMETER packet.
+    GPS packets update the per-device cache; they do not write a row.
     All other sensor types are silently ignored.
+
+    File naming (when csv_prefix is set):
+        {prefix}_{ip_tag}.csv
+        e.g.  sensagram_192_168_1_5.csv
     """
 
-    def __init__(self, csv_filename=None):
-        self._latest_gps = None
-        self._csv_writer = None
-        self._csv_file   = None
+    def __init__(self, csv_prefix=None):
+        self._prefix   = csv_prefix   # None = no CSV (console only)
+        self._registry = DeviceRegistry()
+        self._states:  dict[str, _DeviceMobilityState] = {}
+        self._lock     = threading.Lock()
 
-        if csv_filename:
-            path = csv_filename if csv_filename.endswith(".csv") else csv_filename + ".csv"
-            self._csv_file   = open(path, "w", newline="")
-            self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=MOBILITY_CSV_FIELDS)
-            self._csv_writer.writeheader()
-            self._csv_file.flush()
-            log(f"[CSV] Mobility log → {path}")
+    # ------------------------------------------------------------------ #
+    # Per-device state management
+    # ------------------------------------------------------------------ #
+
+    def _get_state(self, device_key: str) -> "_DeviceMobilityState | None":
+        """
+        Return the existing state for device_key, or create a new one.
+        Returns None if the device cap has been reached.
+        """
+        with self._lock:
+            if device_key in self._states:
+                return self._states[device_key]
+
+            # First time we see this device — try to register it.
+            if self._registry.get_or_register(device_key) is None:
+                return None   # cap reached
+
+            state = _DeviceMobilityState()
+
+            if self._prefix:
+                tag  = _key_to_tag(device_key)
+                path = f"{self._prefix}_{tag}.csv"
+                f    = open(path, "w", newline="")
+                writer = csv.DictWriter(f, fieldnames=MOBILITY_CSV_FIELDS)
+                writer.writeheader()
+                f.flush()
+                state.csv_writer = writer
+                state.csv_file   = f
+                log(f"[CSV] Device {device_key} → {path}")
+
+            self._states[device_key] = state
+            return state
+
+    # ------------------------------------------------------------------ #
+    # CSV write helper
+    # ------------------------------------------------------------------ #
 
     def _val(self, d, key, idx=None):
         if d is None:
@@ -376,9 +489,10 @@ class MobilityMode:
             return v[idx] if len(v) > idx else ""
         return v
 
-    def _write_row(self, accel, gps, received_at):
-        v = self._val
-        self._csv_writer.writerow({
+    def _write_row(self, state: _DeviceMobilityState, accel, received_at):
+        gps = state.latest_gps
+        v   = self._val
+        state.csv_writer.writerow({
             "received_at":       received_at,
             "gps_time":          v(gps,   "time"),
             "latitude":          v(gps,   "latitude"),
@@ -407,104 +521,100 @@ class MobilityMode:
             "accel_std_y":       v(accel, "stdDev",  1),
             "accel_std_z":       v(accel, "stdDev",  2),
         })
-        self._csv_file.flush()
+        state.csv_file.flush()
 
-    def handle(self, data):
+    # ------------------------------------------------------------------ #
+    # Packet handler
+    # ------------------------------------------------------------------ #
+
+    def handle(self, data, addr):
+        """
+        Resolve the device key from the JSON payload (stable UUID from app),
+        falling back to source IP for older app versions.
+        """
         jsonData   = json.loads(data)
+        device_key = _device_key(jsonData, addr)
+        state      = self._get_state(device_key)
+        if state is None:
+            return   # device limit reached
+
         sensorType = jsonData["type"]
 
         if sensorType == "android.sensor.accelerometer":
             received_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             ts     = jsonData.get("timestamp")
             values = jsonData.get("values", [None, None, None])
-            data_print(f"[ACCELEROMETER]  ts={ts}")
-            data_print(f"  current : x={values[0]}  y={values[1]}  z={values[2]}")
+            data_print(f"[ACCELEROMETER]  ts={ts}", device_key)
+            data_print(f"  current : x={values[0]}  y={values[1]}  z={values[2]}", device_key)
             for stat in ("min", "max", "avg", "stdDev"):
                 sv = jsonData.get(stat)
                 if sv is not None:
-                    data_print(f"  {stat.ljust(6)}: x={sv[0]}  y={sv[1]}  z={sv[2]}")
-            if self._latest_gps is None:
-                data_print("  gps    : (no fix yet — GPS columns will be blank in CSV)")
+                    data_print(f"  {stat.ljust(6)}: x={sv[0]}  y={sv[1]}  z={sv[2]}", device_key)
+            if state.latest_gps is None:
+                data_print("  gps    : (no fix yet)", device_key)
             else:
-                g = self._latest_gps
+                g = state.latest_gps
                 data_print(
                     f"  gps    : lat={g.get('latitude'):.6f}  "
                     f"lon={g.get('longitude'):.6f}  "
-                    f"alt={g.get('altitude'):.1f} m"
+                    f"alt={g.get('altitude'):.1f} m",
+                    device_key
                 )
-            data_print("")
-            if self._csv_writer:
-                self._write_row(jsonData, self._latest_gps, received_at)
+            data_print("", device_key)
+            if state.csv_writer:
+                self._write_row(state, jsonData, received_at)
 
         elif sensorType == "android.gps":
-            self._latest_gps = jsonData
+            state.latest_gps = jsonData
             lat      = jsonData.get("latitude")
             lon      = jsonData.get("longitude")
             alt      = jsonData.get("altitude")
             speed    = jsonData.get("speed")
             bearing  = jsonData.get("bearing")
             accuracy = jsonData.get("accuracy")
-            data_print(f"[GPS]  updated={datetime.now().strftime('%H:%M:%S.%f')[:-3]}")
-            data_print(f"  lat={lat:.6f}  lon={lon:.6f}  alt={alt:.1f} m")
-            data_print(f"  speed={speed:.2f} m/s  bearing={bearing:.1f}°  accuracy={accuracy:.1f} m")
-            data_print("")
+            data_print(
+                f"[GPS]  lat={lat:.6f}  lon={lon:.6f}  "
+                f"alt={alt:.1f} m  spd={speed:.2f} m/s  "
+                f"brg={bearing:.1f}°  acc={accuracy:.1f} m",
+                device_key
+            )
+            data_print("", device_key)
 
-        # all other types silently ignored
+        # all other types silently ignored in mobility mode
 
 
 # =========================================================================== #
-# TCP / UDP transport
+# TCP / UDP transport  (unchanged structure; handle() signature updated)
 # =========================================================================== #
 
-# recv() timeout in seconds.  After this long with no data the connection is
-# treated as dead and cleaned up.  Typical NAT idle-timeout on cellular
-# networks is 2–5 minutes, so 60 s keeps sessions alive across brief gaps
-# while not holding threads forever on truly dead connections.
 TCP_RECV_TIMEOUT = 60
+TCP_KA_IDLE  = 15
+TCP_KA_INTVL = 5
+TCP_KA_CNT   = 3
 
-# TCP keepalive: after TCP_KA_IDLE seconds of silence the OS sends keepalive
-# probes every TCP_KA_INTVL seconds, up to TCP_KA_CNT times.  Total detection
-# time ≈ TCP_KA_IDLE + TCP_KA_CNT * TCP_KA_INTVL seconds.
-TCP_KA_IDLE  = 15   # seconds of idle before first probe
-TCP_KA_INTVL = 5    # seconds between subsequent probes
-TCP_KA_CNT   = 3    # number of failed probes before declaring dead
+_handler_lock = threading.Lock()
 
 
 def _apply_keepalive(sock):
-    """Enable TCP keepalive on a socket.  Platform-dependent options are set
-    when the OS supports them (Linux, macOS); the base SO_KEEPALIVE is always
-    set so the OS will at minimum use its own default timers."""
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-    # Linux
     if hasattr(socket, "TCP_KEEPIDLE"):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE,  TCP_KA_IDLE)
-    # Linux + macOS (TCP_KEEPINTVL)
     if hasattr(socket, "TCP_KEEPINTVL"):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, TCP_KA_INTVL)
-    # Linux + macOS (TCP_KEEPCNT)
     if hasattr(socket, "TCP_KEEPCNT"):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT,   TCP_KA_CNT)
 
 
 def handle_tcp_client(conn, addr, handler):
     """
-    Receive newline-delimited JSON from one TCP client and forward each
-    complete line to handler().
+    Receive newline-delimited JSON from one TCP client.
 
-    Key behaviours vs the original:
-      • recv() has a timeout (TCP_RECV_TIMEOUT) so a silently-dead connection
-        (NAT expiry, phone sleep) is detected and cleaned up within a bounded
-        time rather than blocking the thread forever.
-      • TCP keepalive is enabled on the client socket so the OS also probes
-        the connection independently of application-level data flow.
-      • A per-client receive buffer is capped at MAX_BUF_BYTES; if it grows
-        beyond that without a newline the partial frame is discarded and a
-        warning is logged (guards against a stuck sender flooding memory).
-      • The handler is called under _handler_lock so that if a slow reconnect
-        overlaps with a still-exiting previous thread they cannot interleave
-        writes to the same CSV file.
+    Key change vs original: handler is now called as
+        handler(line, addr[0])
+    so MobilityMode/StandardMode can route the packet to the correct
+    per-device state using the client's IP address.
     """
-    MAX_BUF_BYTES = 256 * 1024   # 256 KB — a single JSON sensor packet is <2 KB
+    MAX_BUF_BYTES = 256 * 1024
 
     log(f"[TCP] Connected: {addr}")
     _apply_keepalive(conn)
@@ -516,7 +626,6 @@ def handle_tcp_client(conn, addr, handler):
             try:
                 chunk = conn.recv(4096)
             except socket.timeout:
-                # No data for TCP_RECV_TIMEOUT seconds — connection is likely dead.
                 log(f"[TCP] Idle timeout ({TCP_RECV_TIMEOUT} s): {addr} — closing")
                 break
             except (ConnectionResetError, ConnectionAbortedError) as e:
@@ -524,14 +633,12 @@ def handle_tcp_client(conn, addr, handler):
                 break
 
             if not chunk:
-                # Orderly shutdown — remote sent FIN.
                 break
 
             buf += chunk.decode("utf-8", errors="replace")
 
-            # Guard against unbounded buffer growth from a malformed sender.
             if len(buf) > MAX_BUF_BYTES:
-                log(f"[TCP] Buffer overflow from {addr} ({len(buf)} bytes, no newline) — discarding")
+                log(f"[TCP] Buffer overflow from {addr} ({len(buf)} bytes) — discarding")
                 buf = ""
                 continue
 
@@ -541,7 +648,8 @@ def handle_tcp_client(conn, addr, handler):
                 if line:
                     with _handler_lock:
                         try:
-                            handler(line)
+                            # ← pass addr[0] (the IP string) as the second arg
+                            handler(line, addr[0])
                         except Exception as e:
                             log(f"[TCP] Parse/handler error from {addr}: {e}")
 
@@ -556,19 +664,12 @@ def handle_tcp_client(conn, addr, handler):
 
 
 def run_tcp_server(port, handler):
-    """
-    Accept TCP connections indefinitely.  Each connection is handled in its
-    own daemon thread.  The server socket has SO_REUSEADDR so it can be
-    restarted immediately after a crash without waiting for TIME_WAIT to expire.
-    """
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # Enable keepalive on the server socket too so accepted sockets inherit it
-    # on platforms that propagate the option (Linux does; Windows does not).
     _apply_keepalive(srv)
     srv.bind(("0.0.0.0", port))
-    srv.listen(5)
-    log(f"[TCP] Listening on 0.0.0.0:{port}  (waiting for connection…)")
+    srv.listen(10)   # backlog raised to match MAX_DEVICES
+    log(f"[TCP] Listening on 0.0.0.0:{port}  (up to {MAX_DEVICES} devices)")
     log(f"[TCP] Keepalive: idle={TCP_KA_IDLE}s  interval={TCP_KA_INTVL}s  probes={TCP_KA_CNT}")
     log(f"[TCP] Recv timeout: {TCP_RECV_TIMEOUT}s")
     while True:
@@ -583,10 +684,19 @@ def run_tcp_server(port, handler):
 
 
 def run_udp_server(port, handler):
-    log(f"[UDP] Listening on 0.0.0.0:{port}")
+    """
+    UDP server.  udpserver.py now calls handler(data, addr) where addr is
+    (ip_string, port_int) — the IP is what MobilityMode/StandardMode uses.
+    """
+    log(f"[UDP] Listening on 0.0.0.0:{port}  (up to {MAX_DEVICES} devices)")
     server = UDPServer(address=("0.0.0.0", port))
     server.setDataCallBack(handler)
     server.start()
+    # Block the main thread so the daemon listener keeps running.
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        pass
 
 
 # =========================================================================== #
@@ -594,86 +704,78 @@ def run_udp_server(port, handler):
 # =========================================================================== #
 
 parser = argparse.ArgumentParser(
-    description="SensaGram receiver — standard and mobility modes",
+    description="SensaGram receiver — multi-device edition",
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    epilog="""
-Examples:
-  Standard mode (all sensors, one CSV per sensor type):
-    python3 server.py
-    python3 server.py --tcp
-    python3 server.py --tcp --csv
-    python3 server.py --csv run1
+    epilog=f"""
+Up to {MAX_DEVICES} devices are supported simultaneously.
+Each device is identified by its source IP address.
+CSV files are named  <prefix>_<ip>_<sensor>.csv  (standard)
+                 or  <prefix>_<ip>.csv            (mobility).
 
-  Mobility mode (GPS + accelerometer only, single combined CSV):
-    python3 server.py --mobility
-    python3 server.py --mobility --tcp
-    python3 server.py --mobility --tcp --csv
+Examples:
+  Standard mode:
+    python3 server.py
+    python3 server.py --tcp --csv run1
+
+  Mobility mode:
     python3 server.py --mobility --tcp --csv my_run
 """
 )
-parser.add_argument("--port", type=int, default=47892,
-                    help="Port to listen on (default: 47892)")
-parser.add_argument("--tcp", action="store_true",
-                    help="Use TCP instead of UDP")
-parser.add_argument("--mobility", action="store_true",
-                    help="Mobility mode: GPS + accelerometer only, single combined CSV")
-parser.add_argument("--csv", metavar="NAME", nargs="?", const="",
-                    help=(
-                        "Enable CSV logging. "
-                        "Standard mode: NAME is a filename prefix — each sensor gets its own "
-                        "file, e.g. run1_accelerometer.csv (default prefix: 'data'). "
-                        "Mobility mode: NAME is the output filename (default: 'sensagram.csv')."
-                    ))
+parser.add_argument("--port",     type=int, default=47892)
+parser.add_argument("--tcp",      action="store_true")
+parser.add_argument("--mobility", action="store_true")
+parser.add_argument("--csv",      metavar="NAME", nargs="?", const="",
+                    help="Enable CSV logging (prefix or filename stem).")
 args = parser.parse_args()
 
 # ------------------------------------------------------------------ #
-# Logging: FileHandler always on; StreamHandler only when no CSV
+# Logging
 # ------------------------------------------------------------------ #
 
-csv_active = args.csv is not None   # set module-level flag used by data_print()
+csv_active = args.csv is not None
 
-log_fmt  = logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+log_fmt = logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 logger.setLevel(logging.INFO)
 
-# server.log — always written, regardless of CSV or console state
 file_handler = logging.FileHandler("server.log", encoding="utf-8")
 file_handler.setFormatter(log_fmt)
 logger.addHandler(file_handler)
 
-# Console — always shows operational messages (log()); sensor data (data_print())
-# is suppressed by csv_active when CSV is on, so the console stays useful either way.
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(log_fmt)
 logger.addHandler(console_handler)
 
 # ------------------------------------------------------------------ #
-# Build the handler object for the chosen mode
+# Mode selection
 # ------------------------------------------------------------------ #
 
 if args.mobility:
-    if args.csv is None:   csv_arg = None
-    elif args.csv == "":   csv_arg = "sensagram"
-    else:                  csv_arg = args.csv
+    if args.csv is None:    csv_arg = None
+    elif args.csv == "":    csv_arg = "sensagram"
+    else:                   csv_arg = args.csv
 
-    mode = MobilityMode(csv_filename=csv_arg)
+    mode = MobilityMode(csv_prefix=csv_arg)
     log("[MODE] Mobility — GPS + accelerometer only")
+    if csv_arg:
+        log(f"[CSV]  Output pattern: {csv_arg}_<ip>.csv")
 else:
-    if args.csv is None:   csv_prefix = None
-    elif args.csv == "":   csv_prefix = "data"
-    else:                  csv_prefix = args.csv
+    if args.csv is None:    csv_prefix = None
+    elif args.csv == "":    csv_prefix = "data"
+    else:                   csv_prefix = args.csv
 
     mode = StandardMode(csv_prefix=csv_prefix)
     log("[MODE] Standard — all sensor types")
     if csv_prefix:
-        log(f"[CSV] Logging enabled  prefix='{_clean_prefix(csv_prefix)}'")
+        log(f"[CSV]  Output pattern: {_clean_prefix(csv_prefix)}_<ip>_<sensor>.csv")
 
 if csv_active:
-    log("[CSV] Console sensor output suppressed — data going to CSV file(s)")
+    log("[CSV]  Console sensor output suppressed — data going to CSV files")
 
-log(f"[LOG] Operational messages → server.log")
+log(f"[LOG]  Operational messages → server.log")
+log(f"[INFO] Max simultaneous devices: {MAX_DEVICES}")
 
 # ------------------------------------------------------------------ #
-# Start transport
+# Transport
 # ------------------------------------------------------------------ #
 
 if args.tcp:

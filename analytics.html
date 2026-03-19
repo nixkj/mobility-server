@@ -171,7 +171,7 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
       <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
     </svg>Load CSV
   </button>
-  <input type="file" id="fi" accept=".csv">
+  <input type="file" id="fi" accept=".csv" multiple>
 
   <div class="fetch-grp">
     <select id="srvsel" title="CSV files in server directory">
@@ -180,6 +180,15 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
     <button id="srvref" onclick="loadFileList()" title="Refresh file list">⟳</button>
     <button id="srvbtn" onclick="fetchSelected()">Load</button>
     <button class="hb" id="livebtn" onclick="toggleLive()" title="Poll this file every 5 s and update charts live">Live</button>
+  </div>
+
+  <!-- Device selector — shown when more than one device CSV is loaded -->
+  <div id="devgrp" style="display:none;align-items:center;gap:4px;border:1px solid var(--bd2);border-radius:4px;overflow:hidden">
+    <span style="font-family:var(--fm);font-size:10px;color:var(--mu);padding:0 6px;white-space:nowrap">Device</span>
+    <select id="devsel" style="font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;border:none;border-left:1px solid var(--bd2);background:var(--su2);color:var(--tx);outline:none;cursor:pointer"
+      onchange="switchDevice(this.value)">
+    </select>
+    <button id="cmpbtn" class="hb" onclick="toggleCompare()" title="Overlay all device tracks on the map" style="border-left:1px solid var(--bd2);border-radius:0">Compare map</button>
   </div>
 
   <button class="hb go" id="dlbtn" onclick="downloadCSV()" title="Download analytics CSV">
@@ -543,8 +552,124 @@ function analyse(raw, sgW, altW) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Visualiser state
+   Multi-device state
+   DEVICES maps a device label (filename stem or IP tag) to its
+   analytics result array.  The active device is what the charts
+   and map show.  All device tracks are shown on the map in
+   compare mode.
 ═══════════════════════════════════════════════════════════════ */
+const DEVICE_COLORS=['#e8a317','#28bb78','#4a8fec','#d94f4f','#9f6fe0',
+                     '#24c0d4','#e06fc0','#7ec828','#d47b28','#8896a8'];
+const DEVICES={};          /* label → {raw, data, rawText} */
+let activeDevice=null;     /* currently displayed device label */
+let compareMode=false;     /* show all tracks on map simultaneously */
+const mapTracks={};        /* label → Leaflet polyline */
+
+function deviceColor(label){
+  const idx=Object.keys(DEVICES).indexOf(label);
+  return DEVICE_COLORS[idx%DEVICE_COLORS.length];
+}
+
+/* Register / update a device's data, then rebuild the UI. */
+function registerDevice(label, rawRows, rawText){
+  const sgW =parseInt(document.getElementById('psg').value)||5;
+  const altW=parseInt(document.getElementById('palt').value)||5;
+  let analysed;
+  try{ analysed=analyse(rawRows,sgW,altW); }
+  catch(e){ st('Analytics error ('+label+'): '+e.message); return; }
+  DEVICES[label]={raw:rawRows, data:analysed, rawText};
+  updateDeviceSelector();
+  if(!activeDevice||activeDevice===label) activateDevice(label);
+}
+
+function updateDeviceSelector(){
+  const labels=Object.keys(DEVICES);
+  const grp=document.getElementById('devgrp');
+  const sel=document.getElementById('devsel');
+  grp.style.display=labels.length>1?'flex':'none';
+  sel.innerHTML=labels.map(l=>`<option value="${l}"${l===activeDevice?' selected':''}>${l}</option>`).join('');
+}
+
+function activateDevice(label){
+  if(!DEVICES[label]) return;
+  activeDevice=label;
+  const d=DEVICES[label];
+  RAW=d.raw; DATA=d.data; RAW_TEXT=d.rawText;
+  currentFile=label;
+  XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
+  XLBL=DATA.map(d=>{
+    if(d.gps_time_str) return d.gps_time_str;
+    const s=String(d.received_at||''); const t=s.slice(11,19);
+    return t.length===8?t:fmtTime(+d.elapsed_s||0);
+  });
+  document.getElementById('dlbtn').style.display='flex';
+  document.getElementById('dlraw').style.display='flex';
+  updateStats();
+  st(`${DATA.length} rows — building…`);
+  setTimeout(()=>{ sizeLayout(); populateMap(); buildAll(); },120);
+  updateDeviceSelector();
+}
+
+function switchDevice(label){
+  activeDevice=label;
+  activateDevice(label);
+  if(compareMode) drawAllTracks();
+}
+
+function toggleCompare(){
+  compareMode=!compareMode;
+  document.getElementById('cmpbtn').style.color=compareMode?'var(--ac2)':'';
+  if(compareMode) drawAllTracks(); else populateMap();
+}
+
+/* Draw all device tracks on the map simultaneously. */
+function drawAllTracks(){
+  if(!mapObj) return;
+  /* Remove old per-device tracks */
+  Object.values(mapTracks).forEach(t=>{ try{mapObj.removeLayer(t);}catch(_){} });
+  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
+  if(mapTrack){ try{mapObj.removeLayer(mapTrack);}catch(_){} mapTrack=null; }
+  if(mapMarker){ try{mapObj.removeLayer(mapMarker);}catch(_){} mapMarker=null; }
+
+  const allBounds=[];
+  Object.entries(DEVICES).forEach(([label,dev])=>{
+    const pts=dev.data
+      .map(d=>[+d.latitude,+d.longitude])
+      .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
+    if(!pts.length) return;
+    const color=deviceColor(label);
+    const poly=L.polyline(pts,{color,weight:2.5,opacity:.85}).addTo(mapObj);
+    poly.bindTooltip(label,{sticky:true});
+    mapTracks[label]=poly;
+    allBounds.push(...pts);
+    /* Start marker */
+    L.circleMarker(pts[0],{radius:4,color,fillColor:color,fillOpacity:1,weight:2})
+      .addTo(mapObj).bindTooltip(label+' start',{direction:'right'});
+  });
+  if(allBounds.length){
+    mapObj.invalidateSize();
+    mapObj.fitBounds(L.latLngBounds(allBounds),{padding:[22,22],maxZoom:16});
+  }
+}
+
+/* Load multiple CSV files at once (from file picker multi-select). */
+function parseMultipleFiles(files){
+  files.forEach(file=>{
+    const label=file.name.replace(/\.[^.]+$/,'');
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const text=ev.target.result;
+      Papa.parse(text,{
+        header:true,dynamicTyping:false,skipEmptyLines:true,
+        complete(r){ if(r.data&&r.data.length>=2) registerDevice(label,r.data,text); },
+        error(e){ st('Parse error ('+label+'): '+e.message); }
+      });
+    };
+    reader.readAsText(file);
+  });
+}
+
+
 const CL={a:'#e8a317',b:'#28bb78',c:'#4a8fec',d:'#d94f4f',e:'#9f6fe0',g:'#8896a8'};
 
 let RAW  = [];   /* original parsed rows from PapaParse */
@@ -662,7 +787,10 @@ function swapTile(){
    File loading — file picker + drag-and-drop
 ═══════════════════════════════════════════════════════════════ */
 document.getElementById('fi').addEventListener('change',e=>{
-  if(e.target.files[0]){ parseCSVFile(e.target.files[0]); } e.target.value='';
+  const files=[...e.target.files];
+  if(files.length===1){ parseCSVFile(files[0]); }
+  else if(files.length>1){ parseMultipleFiles(files); }
+  e.target.value='';
 });
 function onDrop(e){
   e.preventDefault();
@@ -675,10 +803,11 @@ function parseCSVFile(file){
   st('Parsing…');
   const reader=new FileReader();
   reader.onload=ev=>{
-    RAW_TEXT=ev.target.result;
-    Papa.parse(RAW_TEXT,{
+    const text=ev.target.result;
+    RAW_TEXT=text;
+    Papa.parse(text,{
       header:true,dynamicTyping:false,skipEmptyLines:true,
-      complete(r){ processRaw(r.data); },
+      complete(r){ registerDevice(currentFile, r.data, text); },
       error(e){ st('Parse error: '+e.message); }
     });
   };
@@ -745,10 +874,10 @@ function fetchCSV(filename){
     .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status+' — '+url); return r.text(); })
     .then(text=>{
       RAW_TEXT=text;
-      currentFile=filename.replace(/\.[^.]+$/,'');
+      const label=filename.replace(/\.[^.]+$/,'');
       Papa.parse(text,{
         header:true,dynamicTyping:false,skipEmptyLines:true,
-        complete(r){ processRaw(r.data); },
+        complete(r){ registerDevice(label, r.data, text); },
         error(e){ st('Parse error: '+e.message); }
       });
     })
@@ -756,6 +885,7 @@ function fetchCSV(filename){
 }
 
 /* ── Core: run analytics then rebuild ───────────────────────── */
+/* Called by onParamChange() to re-analyse the active device. */
 function processRaw(rawRows){
   if(!rawRows||rawRows.length<2){ st('Too few rows.'); return; }
   RAW=rawRows;
@@ -767,10 +897,10 @@ function processRaw(rawRows){
     st('Analytics error: '+e.message);
     return;
   }
+  /* Update the stored analysed data for the active device. */
+  if(activeDevice&&DEVICES[activeDevice]) DEVICES[activeDevice].data=DATA;
   XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
   XLBL=DATA.map(d=>{
-    /* Prefer the GPS chipset timestamp (more accurate) when available,
-       fall back to server received_at, then elapsed m:ss. */
     if(d.gps_time_str) return d.gps_time_str;
     const s=String(d.received_at||'');
     const t=s.slice(11,19);
@@ -784,6 +914,7 @@ function processRaw(rawRows){
     sizeLayout();
     populateMap();
     buildAll();
+    if(compareMode) drawAllTracks();
   },120);
 }
 
@@ -1052,13 +1183,18 @@ window.addEventListener('load',()=>{
 });
 
 function populateMap(){
+  if(compareMode){ drawAllTracks(); return; }
   mapAllPts=DATA
     .map(d=>[+d.latitude,+d.longitude])
     .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
   if(!mapAllPts.length) return;
+  /* Remove all compare tracks and the single-device track */
+  Object.values(mapTracks).forEach(t=>{ try{mapObj.removeLayer(t);}catch(_){} });
+  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
   if(mapTrack)  mapObj.removeLayer(mapTrack);
   if(mapMarker) mapObj.removeLayer(mapMarker);
-  mapTrack=L.polyline(mapAllPts,{color:CL.a,weight:2.5,opacity:.85}).addTo(mapObj);
+  const trackColor = activeDevice ? deviceColor(activeDevice) : CL.a;
+  mapTrack=L.polyline(mapAllPts,{color:trackColor,weight:2.5,opacity:.85}).addTo(mapObj);
   mapTrack.on('click',function(e){
     const clat=e.latlng.lat,clon=e.latlng.lng;
     let best=0,bestD=Infinity;
@@ -1080,7 +1216,7 @@ function populateMap(){
     .addTo(mapObj).bindTooltip('Start',{direction:'right'});
   mapMarker=L.marker(mapAllPts[0],{icon:L.divIcon({
     className:'',
-    html:`<div style="width:10px;height:10px;border-radius:50%;background:${CL.a};border:2px solid var(--bg);box-shadow:0 0 7px ${CL.a}bb"></div>`,
+    html:`<div style="width:10px;height:10px;border-radius:50%;background:${trackColor};border:2px solid var(--bg);box-shadow:0 0 7px ${trackColor}bb"></div>`,
     iconSize:[10,10],iconAnchor:[5,5]
   })}).addTo(mapObj);
 }
@@ -1099,7 +1235,13 @@ const row=(l,v,c='')=>
 
 function updInsp(idx){
   const d=DATA[idx]; if(!d) return;
-  document.getElementById('ic').innerHTML=`
+  const devLabel=activeDevice
+    ? `<div class="ig"><div class="igt">Device</div>
+        <div class="ir"><span class="il">ID / IP</span>
+          <span class="iv" style="color:${deviceColor(activeDevice)}">${activeDevice}</span></div>
+      </div>`
+    : '';
+  document.getElementById('ic').innerHTML=devLabel+`
     <div class="ig"><div class="igt">Time</div>
       ${row('Timestamp', String(d.received_at).slice(11,19))}
       ${d.gps_time_str ? row('GPS time', d.gps_time_str, 'a2') : ''}
@@ -1172,10 +1314,9 @@ function startLive(filename){
   btn.innerHTML='<span class="live-dot"></span>Live';
   document.getElementById('srvbtn').disabled=true;
 
+  const liveLabel=filename.replace(/\.[^.]+$/,'');
   const poll=()=>{
     const url=_dirBase+filename;
-    /* cache:'no-store' ensures Apache and the browser always fetch the
-       current version of the file rather than a cached snapshot.        */
     fetch(url,{cache:'no-store'})
       .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
       .then(text=>{
@@ -1184,24 +1325,18 @@ function startLive(filename){
           header:true,dynamicTyping:false,skipEmptyLines:true,
           complete(r){
             if(!r.data||r.data.length<2) return;
-            RAW=r.data;
-            const sgW=parseInt(document.getElementById('psg').value)||5;
-            const altW=parseInt(document.getElementById('palt').value)||5;
-            try{ DATA=analyse(RAW,sgW,altW); } catch(e){ return; }
-            XS=DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
-            XLBL=DATA.map(d=>{
-              if(d.gps_time_str) return d.gps_time_str;
-              const s=String(d.received_at||'');
-              const t=s.slice(11,19);
-              return t.length===8?t:fmtTime(+d.elapsed_s||0);
-            });
-            if(Object.keys(CH).length===0){
-              /* First poll — no charts yet; do a full initial build. */
-              currentFile=filename.replace(/\.[^.]+$/,'');
-              sizeLayout(); populateMap(); buildAll();
-              document.getElementById('dlbtn').style.display='flex';
-              document.getElementById('dlraw').style.display='flex';
-            } else {
+            const firstPoll=!DEVICES[liveLabel];
+            /* registerDevice updates DATA/RAW/XS/XLBL for the active device */
+            registerDevice(liveLabel, r.data, text);
+            if(!firstPoll){
+              /* In-place chart refresh (no destroy/recreate flicker) */
+              XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
+              XLBL=DATA.map(d=>{
+                if(d.gps_time_str) return d.gps_time_str;
+                const s=String(d.received_at||'');
+                const t=s.slice(11,19);
+                return t.length===8?t:fmtTime(+d.elapsed_s||0);
+              });
               liveRefresh();
             }
             st(`Live · ${DATA.length} rows · updated ${new Date().toTimeString().slice(0,8)}`);
