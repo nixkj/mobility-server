@@ -232,7 +232,17 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
       </select>
       <button id="srvref" onclick="loadFileList()" title="Refresh file list">⟳</button>
       <button id="srvbtn" onclick="fetchSelected()">Load</button>
-      <button class="hb" id="livebtn" onclick="toggleLive()" title="Poll this file every 5 s and update charts live">Live</button>
+      <button class="hb" id="livebtn" onclick="toggleLive()" title="Poll the selected file at the chosen interval">Live</button>
+      <select id="liveint" title="Live refresh interval"
+        style="font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;border:none;
+               border-left:1px solid var(--bd2);background:var(--su2);color:var(--tx);
+               outline:none;cursor:pointer"
+        onchange="onLiveIntervalChange(this.value)">
+        <option value="1000">1 s</option>
+        <option value="2000">2 s</option>
+        <option value="5000" selected>5 s</option>
+        <option value="10000">10 s</option>
+      </select>
     </div>
 
     <!-- Device selector — shown when more than one device CSV is loaded -->
@@ -1400,7 +1410,7 @@ function updateStats(){
    Polls the currently-selected server file every LIVE_INTERVAL ms,
    re-runs analytics, and refreshes chart data in-place.
 ═══════════════════════════════════════════════════════════════ */
-const LIVE_INTERVAL = 5000;   /* ms — matches server.py send interval */
+let LIVE_INTERVAL = 5000;   /* ms — updated by interval selector */
 
 function toggleLive(){
   if(liveTimer){ stopLive(); return; }
@@ -1410,57 +1420,81 @@ function toggleLive(){
   startLive(filename);
 }
 
+/* Single shared poll function — avoids duplicated logic */
+let _liveFilename='';
+function livePoll(){
+  if(!_liveFilename||!_dirBase) return;
+  const url=_dirBase+_liveFilename;
+  fetch(url,{cache:'no-store'})
+    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    .then(text=>{
+      Papa.parse(text,{
+        header:true,dynamicTyping:false,skipEmptyLines:true,
+        complete(r){
+          if(!r.data||r.data.length<2) return;
+          const sgW=parseInt(document.getElementById('psg').value)||5;
+          const altW=parseInt(document.getElementById('palt').value)||5;
+          let analysed;
+          try{ analysed=analyse(r.data,sgW,altW); }catch(e){ return; }
+
+          /* Always update all shared state */
+          const label=_liveFilename.replace(/\.[^.]+$/,'');
+          DEVICES[label]={raw:r.data,data:analysed,rawText:text};
+          RAW=r.data; DATA=analysed; RAW_TEXT=text; currentFile=label;
+          activeDevice=label;
+          XS=DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
+          XLBL=DATA.map(d=>{
+            if(d.gps_time_str) return d.gps_time_str;
+            const s=String(d.received_at||''); const t=s.slice(11,19);
+            return t.length===8?t:fmtTime(+d.elapsed_s||0);
+          });
+          updateDeviceSelector();
+          document.getElementById('dlbtn').style.display='flex';
+          document.getElementById('dlraw').style.display='flex';
+
+          /* Build charts on first poll; refresh in-place on subsequent polls */
+          if(Object.keys(CH).length===0){
+            sizeLayout(); populateMap(); buildAll();
+          } else {
+            liveRefresh();
+          }
+          st(`Live · ${DATA.length} rows · updated ${new Date().toTimeString().slice(0,8)}`);
+        }
+      });
+    })
+    .catch(e=>{ st('Live poll error: '+e.message); });
+}
+
 function startLive(filename){
   liveAutoFollow=true;
+  _liveFilename=filename;
   const btn=document.getElementById('livebtn');
   btn.classList.add('live');
   btn.innerHTML='<span class="live-dot"></span>Live';
   document.getElementById('srvbtn').disabled=true;
-
-  const liveLabel=filename.replace(/\.[^.]+$/,'');
-  const poll=()=>{
-    const url=_dirBase+filename;
-    fetch(url,{cache:'no-store'})
-      .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
-      .then(text=>{
-        RAW_TEXT=text;
-        Papa.parse(text,{
-          header:true,dynamicTyping:false,skipEmptyLines:true,
-          complete(r){
-            if(!r.data||r.data.length<2) return;
-            const firstPoll=!DEVICES[liveLabel];
-            /* registerDevice updates DATA/RAW/XS/XLBL for the active device */
-            registerDevice(liveLabel, r.data, text);
-            if(!firstPoll){
-              /* In-place chart refresh (no destroy/recreate flicker) */
-              XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
-              XLBL=DATA.map(d=>{
-                if(d.gps_time_str) return d.gps_time_str;
-                const s=String(d.received_at||'');
-                const t=s.slice(11,19);
-                return t.length===8?t:fmtTime(+d.elapsed_s||0);
-              });
-              liveRefresh();
-            }
-            st(`Live · ${DATA.length} rows · updated ${new Date().toTimeString().slice(0,8)}`);
-          }
-        });
-      })
-      .catch(e=>{ st('Live poll error: '+e.message); });
-  };
-
-  poll();   /* immediate first poll, then repeat */
-  liveTimer=setInterval(poll,LIVE_INTERVAL);
+  livePoll();
+  liveTimer=setInterval(livePoll,LIVE_INTERVAL);
 }
 
 function stopLive(){
   if(liveTimer){ clearInterval(liveTimer); liveTimer=null; }
+  _liveFilename='';
   const btn=document.getElementById('livebtn');
   btn.classList.remove('live');
   btn.innerHTML='Live';
   document.getElementById('srvbtn').disabled=false;
   st(DATA.length ? `${DATA.length} rows · live stopped` : '');
 }
+
+function onLiveIntervalChange(val){
+  LIVE_INTERVAL=parseInt(val)||5000;
+  if(liveTimer){
+    clearInterval(liveTimer);
+    livePoll();
+    liveTimer=setInterval(livePoll,LIVE_INTERVAL);
+  }
+}
+
 
 /* Update all chart datasets in-place — avoids destroy/recreate flicker. */
 function liveRefresh(){
