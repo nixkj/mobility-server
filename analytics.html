@@ -32,8 +32,8 @@
 html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh);overflow:hidden}
 
 /* ── header ── */
-#hdr{position:fixed;inset:0 0 auto;height:48px;z-index:100;display:flex;align-items:center;
-  gap:6px;padding:0 10px;background:var(--su);border-bottom:1px solid var(--bd);flex-wrap:nowrap;overflow:hidden}
+#hdr{position:fixed;inset:0 0 auto;z-index:100;display:flex;align-items:center;
+  flex-wrap:wrap;gap:5px;padding:5px 8px;background:var(--su);border-bottom:1px solid var(--bd)}
 #hdr h1{font-size:20px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
   color:var(--ac);white-space:nowrap;margin-right:2px}
 #hdr h1 span{color:var(--mu);font-weight:300}
@@ -52,7 +52,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 /* server-fetch group */
 .fetch-grp{display:flex;align-items:center;gap:0;border:1px solid var(--bd2);border-radius:4px;overflow:hidden}
 .fetch-grp:focus-within{border-color:var(--ac)}
-#srvsel{font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;max-width:160px;
+#srvsel{font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;max-width:130px;
   border:none;background:var(--su2);color:var(--tx);outline:none;cursor:pointer}
 #srvsel option{background:var(--su);color:var(--tx)}
 #srvref{padding:0 6px;height:26px;font-size:13px;line-height:1;border:none;
@@ -86,8 +86,17 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 .chip{font-family:var(--fm);font-size:11px;color:var(--mu);white-space:nowrap}
 .chip b{color:var(--tx)}
 
+/* ── mobile: hide non-essential chips and shrink select ── */
+@media(max-width:600px){
+  #hdr h1{font-size:16px}
+  #si{display:none}
+  #stmsg{display:none}
+  #srvsel{max-width:90px}
+  .pgrp label{display:none}
+}
+
 /* ── body grid ── */
-#body{position:fixed;top:48px;left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
+#body{position:fixed;top:var(--hdr-h,48px);left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
 
 /* left panel */
 #lp{display:flex;flex-direction:column;border-right:1px solid var(--bd);overflow:hidden;height:100%}
@@ -133,7 +142,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 .zoom-hint{margin-left:auto;padding:6px 12px;font-family:var(--fm);font-size:9px;
   color:var(--mu);background:var(--su2);letter-spacing:.04em}
 
-/* chart pages */
+/* chart pages — desktop: absolute fill */
 #cpages{position:relative;overflow:hidden;flex-shrink:0}
 .cp{display:none;position:absolute;inset:0;padding:9px 11px;gap:9px}
 .cp.on{display:grid;grid-template-rows:1fr 1fr}
@@ -142,6 +151,36 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 .cct{flex-shrink:0;font-size:10px;font-weight:600;letter-spacing:.1em;
   text-transform:uppercase;color:var(--mu);margin-bottom:4px}
 .cc canvas{display:block}
+
+/* ── mobile layout ────────────────────────────────────── */
+/* Map toggle button — only shown on mobile */
+#maptoggle{display:none}
+
+@media(max-width:700px){
+  /* Stack left panel above right panel instead of side-by-side */
+  #body{grid-template-columns:1fr;grid-template-rows:auto 1fr;overflow-y:auto}
+
+  /* Left panel: shown/hidden by toggle button, collapsed by default */
+  #lp{height:auto;border-right:none;border-bottom:1px solid var(--bd);
+    max-height:0;overflow:hidden;transition:max-height .3s ease}
+  #lp.open{max-height:600px}
+
+  /* Map toggle button visible on mobile */
+  #maptoggle{display:inline-flex;align-items:center;gap:4px}
+
+  /* Right panel fills remaining space, scrollable */
+  #rp{height:auto;overflow:visible}
+
+  /* Chart pages: switch to scrollable stacked layout */
+  #cpages{position:static;overflow-y:auto;height:auto;flex-shrink:1}
+  .cp{position:static;display:none;flex-direction:column;padding:9px 11px;gap:9px;inset:unset}
+  .cp.on{display:flex;grid-template-rows:unset}
+  .cc{min-height:200px;overflow:visible}
+
+  /* Hide the desktop zoom hint to save space */
+  .zoom-hint{display:none}
+  #tlb{padding:4px 8px;gap:6px}
+}
 
 /* drop zone on body (replaces overlay — drag anywhere onto the page) */
 body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:400;
@@ -164,6 +203,9 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
 <!-- ── header ── -->
 <div id="hdr">
   <h1>Moto <span>Analytics</span></h1>
+
+  <!-- Map toggle — only visible on mobile -->
+  <button class="hb" id="maptoggle" onclick="toggleMap()">🗺 Map</button>
 
   <button class="hb" onclick="document.getElementById('fi').click()">
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -266,7 +308,7 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
         <div class="cc"><div class="cct">Cumulative Distance — Haversine (m)</div><canvas id="c-dst"></canvas></div>
       </div>
       <div class="cp" id="p-vib">
-        <div class="cc"><div class="cct">IMU load — accel std magnitude (m/s²)</div><canvas id="c-vib"></canvas></div>
+        <div class="cc"><div class="cct">Other — accel std magnitude (m/s²)</div><canvas id="c-vib"></canvas></div>
         <div class="cc"><div class="cct">GPS Accuracy — H &amp; V (m)</div><canvas id="c-hacc"></canvas></div>
       </div>
     </div>
@@ -735,15 +777,32 @@ function col(key){
 function computeCanvasW(){
   return Math.max(100,document.getElementById('cpages').clientWidth-40);
 }
+function isMobile(){ return window.innerWidth<=700; }
+function toggleMap(){
+  document.getElementById('lp').classList.toggle('open');
+  setTimeout(()=>{ if(mapObj) mapObj.invalidateSize(); },320);
+}
 function sizeLayout(){
-  const HDR=48,TLB=document.getElementById('tlb').offsetHeight||34;
+  const HDR=document.getElementById('hdr').getBoundingClientRect().height;
+  const TLB=document.getElementById('tlb').offsetHeight||34;
   const TABS=document.getElementById('tabs').offsetHeight||33;
-  const cpH=Math.max(200,window.innerHeight-HDR-TLB-TABS);
-  document.getElementById('cpages').style.height=cpH+'px';
-  const mapH=Math.max(160,Math.round(cpH*0.35));
-  document.getElementById('map').style.height=mapH+'px';
-  document.getElementById('mapw').style.height=mapH+'px';
-  CANVAS_H=Math.max(60,Math.floor((cpH-27)/2)-22-14);
+  if(isMobile()){
+    /* On mobile the page scrolls naturally — charts use a fixed per-card
+       height rather than splitting available viewport space. */
+    const mapH=Math.min(260,Math.round(window.innerHeight*0.35));
+    document.getElementById('map').style.height=mapH+'px';
+    document.getElementById('mapw').style.height=mapH+'px';
+    CANVAS_H=220;
+    /* Remove any JS-set pixel height so CSS controls cpages height */
+    document.getElementById('cpages').style.height='';
+  } else {
+    const cpH=Math.max(200,window.innerHeight-HDR-TLB-TABS);
+    document.getElementById('cpages').style.height=cpH+'px';
+    const mapH=Math.max(160,Math.round(cpH*0.35));
+    document.getElementById('map').style.height=mapH+'px';
+    document.getElementById('mapw').style.height=mapH+'px';
+    CANVAS_H=Math.max(60,Math.floor((cpH-27)/2)-22-14);
+  }
   return CANVAS_H;
 }
 
@@ -1180,6 +1239,19 @@ window.addEventListener('load',()=>{
   L.control.zoom({position:'bottomright'}).addTo(mapObj);
   swapTile();
   loadFileList();
+
+  /* Keep --hdr-h in sync whenever the header reflows (e.g. wraps to two
+     rows on a narrow mobile screen).  sizeLayout() uses window.innerHeight
+     minus the header height, so it must be called after every reflow. */
+  const hdr = document.getElementById('hdr');
+  const updateHdrHeight = () => {
+    const h = hdr.getBoundingClientRect().height;
+    document.documentElement.style.setProperty('--hdr-h', h + 'px');
+    document.getElementById('body').style.top = h + 'px';
+    if(DATA.length) sizeLayout();
+  };
+  new ResizeObserver(updateHdrHeight).observe(hdr);
+  updateHdrHeight();
 });
 
 function populateMap(){
