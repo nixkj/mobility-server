@@ -32,8 +32,12 @@
 html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh);overflow:hidden}
 
 /* ── header ── */
-#hdr{position:fixed;inset:0 0 auto;z-index:100;display:flex;align-items:center;
-  flex-wrap:wrap;gap:5px;padding:5px 8px;background:var(--su);border-bottom:1px solid var(--bd)}
+#hdr{position:fixed;inset:0 0 auto;z-index:100;display:flex;flex-direction:column;
+  background:var(--su);border-bottom:1px solid var(--bd)}
+#hdr-top{display:flex;align-items:center;flex-wrap:nowrap;overflow:hidden;
+  gap:5px;padding:0 8px;height:40px;flex-shrink:0}
+#hdr-bot{display:flex;align-items:center;gap:8px;padding:2px 8px 3px;
+  border-top:1px solid var(--bd);background:var(--su2);min-height:22px;flex-shrink:0;overflow:hidden}
 #hdr h1{font-size:20px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
   color:var(--ac);white-space:nowrap;margin-right:2px}
 #hdr h1 span{color:var(--mu);font-weight:300}
@@ -81,9 +85,9 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 #srvbtn:disabled{opacity:.35;cursor:not-allowed}
 
 #dlbtn,#dlraw{display:none}
-#stmsg{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap}
-#si{display:flex;gap:6px;margin-left:auto;flex-shrink:0}
-.chip{font-family:var(--fm);font-size:11px;color:var(--mu);white-space:nowrap}
+#stmsg{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#si{display:flex;gap:8px;margin-left:auto;flex-shrink:0}
+.chip{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap}
 .chip b{color:var(--tx)}
 
 /* ── mobile: hide non-essential chips and shrink select ── */
@@ -96,7 +100,7 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 }
 
 /* ── body grid ── */
-#body{position:fixed;top:var(--hdr-h,48px);left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
+#body{position:fixed;top:var(--hdr-h,62px);left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
 
 /* left panel */
 #lp{display:flex;flex-direction:column;border-right:1px solid var(--bd);overflow:hidden;height:100%}
@@ -157,27 +161,33 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 #maptoggle{display:none}
 
 @media(max-width:700px){
-  /* Stack left panel above right panel instead of side-by-side */
-  #body{grid-template-columns:1fr;grid-template-rows:auto 1fr;overflow-y:auto}
+  /* Header wraps to multiple rows on mobile */
+  #hdr{height:auto;flex-wrap:wrap;padding:5px 8px;overflow:visible}
 
-  /* Left panel: shown/hidden by toggle button, collapsed by default */
-  #lp{height:auto;border-right:none;border-bottom:1px solid var(--bd);
-    max-height:0;overflow:hidden;transition:max-height .3s ease}
-  #lp.open{max-height:600px}
+  /* Body top offset is set dynamically by JS on mobile only */
+  #body{top:var(--hdr-h,48px)}
+
+  /* Single column; rows size to content so page can scroll */
+  #body{grid-template-columns:1fr;grid-template-rows:auto auto;overflow-y:auto}
+
+  /* Left panel hidden by default; shown via .open class */
+  #lp{display:none;height:auto;border-right:none;border-bottom:1px solid var(--bd)}
+  #lp.open{display:flex}
 
   /* Map toggle button visible on mobile */
   #maptoggle{display:inline-flex;align-items:center;gap:4px}
 
-  /* Right panel fills remaining space, scrollable */
-  #rp{height:auto;overflow:visible}
+  /* Right panel: natural height, scrolls with the page */
+  #rp{height:auto;overflow:visible;min-height:100px}
 
-  /* Chart pages: switch to scrollable stacked layout */
-  #cpages{position:static;overflow-y:auto;height:auto;flex-shrink:1}
-  .cp{position:static;display:none;flex-direction:column;padding:9px 11px;gap:9px;inset:unset}
+  /* Chart pages: static flow, stacked vertically */
+  #cpages{position:static;overflow:visible;height:auto !important;flex-shrink:1}
+  .cp{position:static;display:none;flex-direction:column;
+      padding:9px 11px;gap:9px;inset:unset}
   .cp.on{display:flex;grid-template-rows:unset}
   .cc{min-height:200px;overflow:visible}
 
-  /* Hide the desktop zoom hint to save space */
+  /* Hide desktop-only chrome */
   .zoom-hint{display:none}
   #tlb{padding:4px 8px;gap:6px}
 }
@@ -202,71 +212,75 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
 
 <!-- ── header ── -->
 <div id="hdr">
-  <h1>Moto <span>Analytics</span></h1>
+  <div id="hdr-top">
+    <h1>Moto <span>Analytics</span></h1>
 
-  <!-- Map toggle — only visible on mobile -->
-  <button class="hb" id="maptoggle" onclick="toggleMap()">🗺 Map</button>
+    <!-- Map toggle — only visible on mobile -->
+    <button class="hb" id="maptoggle" onclick="toggleMap()">🗺 Map</button>
 
-  <button class="hb" onclick="document.getElementById('fi').click()">
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-    </svg>Load CSV
-  </button>
-  <input type="file" id="fi" accept=".csv" multiple>
+    <button class="hb" onclick="document.getElementById('fi').click()">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>Load CSV
+    </button>
+    <input type="file" id="fi" accept=".csv" multiple>
 
-  <div class="fetch-grp">
-    <select id="srvsel" title="CSV files in server directory">
-      <option value="">— no server —</option>
-    </select>
-    <button id="srvref" onclick="loadFileList()" title="Refresh file list">⟳</button>
-    <button id="srvbtn" onclick="fetchSelected()">Load</button>
-    <button class="hb" id="livebtn" onclick="toggleLive()" title="Poll this file every 5 s and update charts live">Live</button>
+    <div class="fetch-grp">
+      <select id="srvsel" title="CSV files in server directory">
+        <option value="">— no server —</option>
+      </select>
+      <button id="srvref" onclick="loadFileList()" title="Refresh file list">⟳</button>
+      <button id="srvbtn" onclick="fetchSelected()">Load</button>
+      <button class="hb" id="livebtn" onclick="toggleLive()" title="Poll this file every 5 s and update charts live">Live</button>
+    </div>
+
+    <!-- Device selector — shown when more than one device CSV is loaded -->
+    <div id="devgrp" style="display:none;align-items:center;gap:4px;border:1px solid var(--bd2);border-radius:4px;overflow:hidden">
+      <span style="font-family:var(--fm);font-size:10px;color:var(--mu);padding:0 6px;white-space:nowrap">Device</span>
+      <select id="devsel" style="font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;border:none;border-left:1px solid var(--bd2);background:var(--su2);color:var(--tx);outline:none;cursor:pointer"
+        onchange="switchDevice(this.value)">
+      </select>
+      <button id="cmpbtn" class="hb" onclick="toggleCompare()" title="Overlay all device tracks on the map" style="border-left:1px solid var(--bd2);border-radius:0">Compare map</button>
+    </div>
+
+    <button class="hb go" id="dlbtn" onclick="downloadCSV()" title="Download analytics CSV">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>Analytics CSV
+    </button>
+
+    <button class="hb" id="dlraw" onclick="downloadRaw()" title="Download original raw CSV">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>Raw CSV
+    </button>
+
+    <div class="pgrp">
+      <label>SG</label>
+      <input type="number" id="psg" value="5" min="5" max="11" step="2" title="Savitzky-Golay window (5/7/9/11)"
+             onchange="onParamChange()">
+      <label>Alt</label>
+      <input type="number" id="palt" value="5" min="3" max="15" step="2" title="Altitude rolling-mean window"
+             onchange="onParamChange()">
+    </div>
+
+    <button class="hb" id="thbtn" onclick="toggleTheme()">
+      <span id="isun">☀️</span><span id="imoon">🌙</span>
+    </button>
   </div>
 
-  <!-- Device selector — shown when more than one device CSV is loaded -->
-  <div id="devgrp" style="display:none;align-items:center;gap:4px;border:1px solid var(--bd2);border-radius:4px;overflow:hidden">
-    <span style="font-family:var(--fm);font-size:10px;color:var(--mu);padding:0 6px;white-space:nowrap">Device</span>
-    <select id="devsel" style="font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;border:none;border-left:1px solid var(--bd2);background:var(--su2);color:var(--tx);outline:none;cursor:pointer"
-      onchange="switchDevice(this.value)">
-    </select>
-    <button id="cmpbtn" class="hb" onclick="toggleCompare()" title="Overlay all device tracks on the map" style="border-left:1px solid var(--bd2);border-radius:0">Compare map</button>
-  </div>
-
-  <button class="hb go" id="dlbtn" onclick="downloadCSV()" title="Download analytics CSV">
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
-    </svg>Analytics CSV
-  </button>
-
-  <button class="hb" id="dlraw" onclick="downloadRaw()" title="Download original raw CSV">
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
-    </svg>Raw CSV
-  </button>
-
-  <div class="pgrp">
-    <label>SG</label>
-    <input type="number" id="psg" value="5" min="5" max="11" step="2" title="Savitzky-Golay window (5/7/9/11)"
-           onchange="onParamChange()">
-    <label>Alt</label>
-    <input type="number" id="palt" value="5" min="3" max="15" step="2" title="Altitude rolling-mean window"
-           onchange="onParamChange()">
-  </div>
-
-  <button class="hb" id="thbtn" onclick="toggleTheme()">
-    <span id="isun">☀️</span><span id="imoon">🌙</span>
-  </button>
-
-  <span id="stmsg"></span>
-  <div id="si">
-    <span class="chip" id="cr">—</span>
-    <span class="chip" id="cd">—</span>
-    <span class="chip" id="ck">—</span>
-    <span class="chip" id="ca">—</span>
-    <span class="chip" id="cs">—</span>
+  <div id="hdr-bot">
+    <span id="stmsg"></span>
+    <div id="si">
+      <span class="chip" id="cr">—</span>
+      <span class="chip" id="cd">—</span>
+      <span class="chip" id="ck">—</span>
+      <span class="chip" id="ca">—</span>
+      <span class="chip" id="cs">—</span>
+    </div>
   </div>
 </div>
 
@@ -779,11 +793,17 @@ function computeCanvasW(){
 }
 function isMobile(){ return window.innerWidth<=700; }
 function toggleMap(){
-  document.getElementById('lp').classList.toggle('open');
-  setTimeout(()=>{ if(mapObj) mapObj.invalidateSize(); },320);
+  const lp = document.getElementById('lp');
+  lp.classList.toggle('open');
+  if(lp.classList.contains('open')){
+    // Give the DOM a tick to paint before invalidating the map tile layer
+    setTimeout(()=>{
+      if(mapObj){ sizeLayout(); mapObj.invalidateSize(); }
+    }, 50);
+  }
 }
 function sizeLayout(){
-  const HDR=document.getElementById('hdr').getBoundingClientRect().height;
+  const HDR = document.getElementById('hdr').getBoundingClientRect().height;
   const TLB=document.getElementById('tlb').offsetHeight||34;
   const TABS=document.getElementById('tabs').offsetHeight||33;
   if(isMobile()){
@@ -1117,7 +1137,10 @@ function makeChart(id,datasets,opts){
   if(!canvas){ console.warn('No canvas:',id); return; }
   const w=computeCanvasW();
   canvas.width=w; canvas.height=CANVAS_H;
-  canvas.style.width=w+'px'; canvas.style.height=CANVAS_H+'px';
+  canvas.style.width=w+'px';
+  /* On mobile the .cc card controls height via CSS min-height;
+     setting an inline style here causes a reflow jump on every update. */
+  if(!isMobile()) canvas.style.height=CANVAS_H+'px';
   if(CH[id]) CH[id].destroy();
   const ch=new Chart(canvas,{type:'line',data:{labels:XLBL,datasets},options:opts});
   CH[id]=ch;
@@ -1213,7 +1236,8 @@ document.querySelectorAll('.tab').forEach(btn=>{
           if(!canvas) return;
           if(canvas.width!==w||canvas.height!==CANVAS_H){
             canvas.width=w; canvas.height=CANVAS_H;
-            canvas.style.width=w+'px'; canvas.style.height=CANVAS_H+'px';
+            canvas.style.width=w+'px';
+            if(!isMobile()) canvas.style.height=CANVAS_H+'px';
             ch.resize(w,CANVAS_H);
           }
         });
@@ -1240,18 +1264,25 @@ window.addEventListener('load',()=>{
   swapTile();
   loadFileList();
 
-  /* Keep --hdr-h in sync whenever the header reflows (e.g. wraps to two
-     rows on a narrow mobile screen).  sizeLayout() uses window.innerHeight
-     minus the header height, so it must be called after every reflow. */
+  /* The header is now two rows (buttons + stats bar), so we always measure
+     its actual height and keep #body.top in sync. The stats row never causes
+     a reflow cascade because it is a separate element from the button row. */
   const hdr = document.getElementById('hdr');
-  const updateHdrHeight = () => {
-    const h = hdr.getBoundingClientRect().height;
+  let _hdrDebounce = null;
+  let _lastHdrH = 0;
+  const applyHdrHeight = () => {
+    const h = Math.round(hdr.getBoundingClientRect().height);
+    if(h === _lastHdrH) return;
+    _lastHdrH = h;
     document.documentElement.style.setProperty('--hdr-h', h + 'px');
     document.getElementById('body').style.top = h + 'px';
     if(DATA.length) sizeLayout();
   };
-  new ResizeObserver(updateHdrHeight).observe(hdr);
-  updateHdrHeight();
+  new ResizeObserver(() => {
+    clearTimeout(_hdrDebounce);
+    _hdrDebounce = setTimeout(applyHdrHeight, 50);
+  }).observe(hdr);
+  applyHdrHeight();
 });
 
 function populateMap(){
@@ -1492,7 +1523,8 @@ window.addEventListener('resize',()=>{
     const canvas=document.getElementById(id);
     if(!canvas) return;
     canvas.width=w; canvas.height=CANVAS_H;
-    canvas.style.width=w+'px'; canvas.style.height=CANVAS_H+'px';
+    canvas.style.width=w+'px';
+    if(!isMobile()) canvas.style.height=CANVAS_H+'px';
     ch.resize(w,CANVAS_H);
   });
   if(mapObj){ mapObj.invalidateSize(); if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16}); }
