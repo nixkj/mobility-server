@@ -275,6 +275,17 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
       <label>Alt</label>
       <input type="number" id="palt" value="5" min="3" max="15" step="2" title="Altitude rolling-mean window"
              onchange="onParamChange()">
+      <label title="Exclude GPS fixes with horizontal accuracy worse than this value">Acc</label>
+      <select id="pacc" title="Max GPS horizontal accuracy (m) — fixes worse than this are excluded"
+              onchange="onParamChange()"
+              style="font-family:var(--fm);font-size:10px;padding:0 2px;height:20px;
+                     border:1px solid var(--bd2);border-radius:3px;background:var(--su2);
+                     color:var(--tx);outline:none;cursor:pointer">
+        <option value="10">10 m</option>
+        <option value="20" selected>20 m</option>
+        <option value="50">50 m</option>
+        <option value="100">100 m</option>
+      </select>
     </div>
 
     <button class="hb" id="thbtn" onclick="toggleTheme()">
@@ -472,7 +483,7 @@ function haversineStep(la1,lo1,la2,lo2) {
    Accepts the raw rows from PapaParse and returns an array of
    result-row objects whose keys exactly match analytics.py output.
 ═══════════════════════════════════════════════════════════════ */
-function analyse(raw, sgW, altW) {
+function analyse(raw, sgW, altW, maxHAcc) {
   const n=raw.length;
   if(n<2) throw new Error('Need at least 2 rows.');
 
@@ -510,7 +521,16 @@ function analyse(raw, sgW, altW) {
     return new Date(ms).toTimeString().slice(0,8); /* HH:MM:SS local */
   });
 
-  const validGPS=lat.map((la,i)=>isFinite(la)&&isFinite(lon[i])&&isFinite(alt[i]));
+  /* A fix is valid only if coordinates are finite AND both horizontal and
+     vertical accuracy are within the user-selected threshold.  Fixes that
+     exceed the limit are treated as missing so they get forward-filled
+     rather than creating spikes on the map and in derived channels. */
+  const accLimit = isFinite(maxHAcc) && maxHAcc > 0 ? maxHAcc : Infinity;
+  const validGPS=lat.map((la,i)=>
+    isFinite(la) && isFinite(lon[i]) && isFinite(alt[i]) &&
+    (isNaN(hAcc[i]) || hAcc[i] <= accLimit) &&
+    (isNaN(vAcc[i]) || vAcc[i] <= accLimit)
+  );
 
   /* ── Velocity ────────────────────────────────────────────── */
   /* Forward-fill GPS speed gaps, fill leading gap with 0. */
@@ -639,9 +659,10 @@ function deviceColor(label){
 /* Register / update a device's data, then rebuild the UI. */
 function registerDevice(label, rawRows, rawText){
   const sgW =parseInt(document.getElementById('psg').value)||5;
+  const accW=parseInt(document.getElementById('pacc').value)||20;
   const altW=parseInt(document.getElementById('palt').value)||5;
   let analysed;
-  try{ analysed=analyse(rawRows,sgW,altW); }
+  try{ analysed=analyse(rawRows,sgW,altW,accW); }
   catch(e){ st('Analytics error ('+label+'): '+e.message); return; }
   DEVICES[label]={raw:rawRows, data:analysed, rawText};
   updateDeviceSelector();
@@ -979,9 +1000,10 @@ function processRaw(rawRows){
   if(!rawRows||rawRows.length<2){ st('Too few rows.'); return; }
   RAW=rawRows;
   const sgW =parseInt(document.getElementById('psg').value)||5;
+  const accW=parseInt(document.getElementById('pacc').value)||20;
   const altW=parseInt(document.getElementById('palt').value)||5;
   try{
-    DATA=analyse(RAW, sgW, altW);
+    DATA=analyse(RAW, sgW, altW, accW);
   } catch(e){
     st('Analytics error: '+e.message);
     return;
@@ -1433,9 +1455,10 @@ function livePoll(){
         complete(r){
           if(!r.data||r.data.length<2) return;
           const sgW=parseInt(document.getElementById('psg').value)||5;
+          const accW=parseInt(document.getElementById('pacc').value)||20;
           const altW=parseInt(document.getElementById('palt').value)||5;
           let analysed;
-          try{ analysed=analyse(r.data,sgW,altW); }catch(e){ return; }
+          try{ analysed=analyse(r.data,sgW,altW,accW); }catch(e){ return; }
 
           /* Always update all shared state */
           const label=_liveFilename.replace(/\.[^.]+$/,'');
