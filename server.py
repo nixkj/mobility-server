@@ -44,6 +44,10 @@ from datetime import datetime
 logger     = logging.getLogger("sensagram")
 csv_active = False   # set True when any CSV output is configured
 
+# Handler-level lock: prevents two simultaneous TCP client threads from
+# writing to the same CSV row or corrupting shared state on reconnect.
+_handler_lock = threading.Lock()
+
 
 def log(msg):
     """Operational message — always written to server.log AND the console."""
@@ -452,37 +456,127 @@ class MobilityMode:
 # TCP / UDP transport
 # =========================================================================== #
 
+# recv() timeout in seconds.  After this long with no data the connection is
+# treated as dead and cleaned up.  Typical NAT idle-timeout on cellular
+# networks is 2–5 minutes, so 60 s keeps sessions alive across brief gaps
+# while not holding threads forever on truly dead connections.
+TCP_RECV_TIMEOUT = 60
+
+# TCP keepalive: after TCP_KA_IDLE seconds of silence the OS sends keepalive
+# probes every TCP_KA_INTVL seconds, up to TCP_KA_CNT times.  Total detection
+# time ≈ TCP_KA_IDLE + TCP_KA_CNT * TCP_KA_INTVL seconds.
+TCP_KA_IDLE  = 15   # seconds of idle before first probe
+TCP_KA_INTVL = 5    # seconds between subsequent probes
+TCP_KA_CNT   = 3    # number of failed probes before declaring dead
+
+
+def _apply_keepalive(sock):
+    """Enable TCP keepalive on a socket.  Platform-dependent options are set
+    when the OS supports them (Linux, macOS); the base SO_KEEPALIVE is always
+    set so the OS will at minimum use its own default timers."""
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    # Linux
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE,  TCP_KA_IDLE)
+    # Linux + macOS (TCP_KEEPINTVL)
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, TCP_KA_INTVL)
+    # Linux + macOS (TCP_KEEPCNT)
+    if hasattr(socket, "TCP_KEEPCNT"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT,   TCP_KA_CNT)
+
+
 def handle_tcp_client(conn, addr, handler):
+    """
+    Receive newline-delimited JSON from one TCP client and forward each
+    complete line to handler().
+
+    Key behaviours vs the original:
+      • recv() has a timeout (TCP_RECV_TIMEOUT) so a silently-dead connection
+        (NAT expiry, phone sleep) is detected and cleaned up within a bounded
+        time rather than blocking the thread forever.
+      • TCP keepalive is enabled on the client socket so the OS also probes
+        the connection independently of application-level data flow.
+      • A per-client receive buffer is capped at MAX_BUF_BYTES; if it grows
+        beyond that without a newline the partial frame is discarded and a
+        warning is logged (guards against a stuck sender flooding memory).
+      • The handler is called under _handler_lock so that if a slow reconnect
+        overlaps with a still-exiting previous thread they cannot interleave
+        writes to the same CSV file.
+    """
+    MAX_BUF_BYTES = 256 * 1024   # 256 KB — a single JSON sensor packet is <2 KB
+
     log(f"[TCP] Connected: {addr}")
+    _apply_keepalive(conn)
+    conn.settimeout(TCP_RECV_TIMEOUT)
+
     buf = ""
     try:
-        with conn:
-            while True:
-                chunk = conn.recv(4096).decode("utf-8", errors="replace")
-                if not chunk:
-                    break
-                buf += chunk
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.strip()
-                    if line:
+        while True:
+            try:
+                chunk = conn.recv(4096)
+            except socket.timeout:
+                # No data for TCP_RECV_TIMEOUT seconds — connection is likely dead.
+                log(f"[TCP] Idle timeout ({TCP_RECV_TIMEOUT} s): {addr} — closing")
+                break
+            except (ConnectionResetError, ConnectionAbortedError) as e:
+                log(f"[TCP] Connection reset by peer {addr}: {e}")
+                break
+
+            if not chunk:
+                # Orderly shutdown — remote sent FIN.
+                break
+
+            buf += chunk.decode("utf-8", errors="replace")
+
+            # Guard against unbounded buffer growth from a malformed sender.
+            if len(buf) > MAX_BUF_BYTES:
+                log(f"[TCP] Buffer overflow from {addr} ({len(buf)} bytes, no newline) — discarding")
+                buf = ""
+                continue
+
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                line = line.strip()
+                if line:
+                    with _handler_lock:
                         try:
                             handler(line)
                         except Exception as e:
-                            log(f"[TCP] Parse error: {e}")
-    except Exception as e:
-        log(f"[TCP] Connection error: {e}")
-    log(f"[TCP] Disconnected: {addr}")
+                            log(f"[TCP] Parse/handler error from {addr}: {e}")
+
+    except OSError as e:
+        log(f"[TCP] Socket error from {addr}: {e}")
+    finally:
+        try:
+            conn.close()
+        except OSError:
+            pass
+        log(f"[TCP] Disconnected: {addr}")
 
 
 def run_tcp_server(port, handler):
+    """
+    Accept TCP connections indefinitely.  Each connection is handled in its
+    own daemon thread.  The server socket has SO_REUSEADDR so it can be
+    restarted immediately after a crash without waiting for TIME_WAIT to expire.
+    """
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # Enable keepalive on the server socket too so accepted sockets inherit it
+    # on platforms that propagate the option (Linux does; Windows does not).
+    _apply_keepalive(srv)
     srv.bind(("0.0.0.0", port))
     srv.listen(5)
     log(f"[TCP] Listening on 0.0.0.0:{port}  (waiting for connection…)")
+    log(f"[TCP] Keepalive: idle={TCP_KA_IDLE}s  interval={TCP_KA_INTVL}s  probes={TCP_KA_CNT}")
+    log(f"[TCP] Recv timeout: {TCP_RECV_TIMEOUT}s")
     while True:
-        conn, addr = srv.accept()
+        try:
+            conn, addr = srv.accept()
+        except OSError as e:
+            log(f"[TCP] accept() error: {e}")
+            continue
         threading.Thread(
             target=handle_tcp_client, args=(conn, addr, handler), daemon=True
         ).start()
