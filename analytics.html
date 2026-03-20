@@ -97,6 +97,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
   #stmsg{display:none}
   #srvsel{max-width:90px}
   .pgrp label{display:none}
+  /* Allow header top row to wrap so Live button is never clipped */
+  #hdr-top{flex-wrap:wrap;height:auto;overflow:visible;padding:4px 8px;gap:4px}
+  /* Hide less-critical controls on small screens to keep header compact */
+  .pgrp{display:none}
+  #dlbtn,#dlraw{display:none !important}
 }
 
 /* ── body grid ── */
@@ -820,6 +825,9 @@ function col(key){
    Layout sizing
 ═══════════════════════════════════════════════════════════════ */
 function computeCanvasW(){
+  /* On mobile #cpages is position:static so clientWidth can read as 0
+     during initial layout. Use the viewport width directly instead. */
+  if(isMobile()) return Math.max(100, window.innerWidth - 40);
   return Math.max(100,document.getElementById('cpages').clientWidth-40);
 }
 function isMobile(){ return window.innerWidth<=700; }
@@ -1585,6 +1593,25 @@ window.addEventListener('resize',()=>{
     ch.resize(w,CANVAS_H);
   });
   if(mapObj){ mapObj.invalidateSize(); if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16}); }
+});
+
+/* iOS / Android fire orientationchange before resize is reliable;
+   trigger a second resize pass after the viewport has settled. */
+window.addEventListener('orientationchange',()=>{
+  setTimeout(()=>{
+    if(!DATA.length) return;
+    sizeLayout();
+    const w=computeCanvasW();
+    Object.entries(CH).forEach(([id,ch])=>{
+      const canvas=document.getElementById(id);
+      if(!canvas) return;
+      canvas.width=w; canvas.height=CANVAS_H;
+      canvas.style.width=w+'px';
+      if(!isMobile()) canvas.style.height=CANVAS_H+'px';
+      ch.resize(w,CANVAS_H);
+    });
+    if(mapObj){ mapObj.invalidateSize(); if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16}); }
+  }, 300);
 });
 </script>
 </body>
