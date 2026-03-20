@@ -399,6 +399,44 @@ class StandardMode:
 # MOBILITY MODE — GPS + accelerometer → one combined CSV per device
 # =========================================================================== #
 
+# Maximum horizontal accuracy (metres) we will accept as a valid GPS fix.
+# Android caches the last known position and can replay it with accuracy=200–500 m
+# while GNSS is still acquiring.  Any fix worse than this threshold is discarded.
+GPS_ACCURACY_FLOOR = 100.0   # metres
+
+
+def _gps_fix_valid(jsonData: dict) -> bool:
+    """
+    Return True only if this GPS packet represents a genuine GNSS fix.
+
+    Android emits onLocationChanged() with a stale cached position while the
+    receiver is still acquiring satellites.  These 'phantom' fixes share a
+    clear signature:
+      • accuracy is very large (200–500 m)
+      • speedAccuracyMetersPerSecond == 0
+      • bearingAccuracyDegrees      == 0
+      • verticalAccuracyMeters      == 0
+    All three sub-accuracies being exactly 0 simultaneously means Android
+    returned 0.0 for fields it never populated (hasSpeed() / hasBearing() /
+    hasVerticalAccuracy() were all false).  We use this as the primary guard
+    and GPS_ACCURACY_FLOOR as a secondary one.
+    """
+    speed_acc   = jsonData.get("speedAccuracyMetersPerSecond",  0) or 0
+    bearing_acc = jsonData.get("bearingAccuracyDegrees",        0) or 0
+    vert_acc    = jsonData.get("verticalAccuracyMeters",        0) or 0
+
+    # Primary: all three sub-accuracies are 0 → fix is not a real GNSS fix
+    if speed_acc == 0 and bearing_acc == 0 and vert_acc == 0:
+        return False
+
+    # Secondary: horizontal accuracy worse than the configured floor
+    horiz_acc = jsonData.get("accuracy", 0) or 0
+    if horiz_acc > GPS_ACCURACY_FLOOR:
+        return False
+
+    return True
+
+
 MOBILITY_CSV_FIELDS = [
     "received_at", "gps_time",
     "latitude", "longitude", "altitude",
@@ -565,13 +603,22 @@ class MobilityMode:
                 self._write_row(state, jsonData, received_at)
 
         elif sensorType == "android.gps":
-            state.latest_gps = jsonData
             lat      = jsonData.get("latitude")
             lon      = jsonData.get("longitude")
             alt      = jsonData.get("altitude")
             speed    = jsonData.get("speed")
             bearing  = jsonData.get("bearing")
             accuracy = jsonData.get("accuracy")
+
+            if not _gps_fix_valid(jsonData):
+                log(
+                    f"[GPS]  {device_key} — discarding invalid fix "
+                    f"(lat={lat:.6f} lon={lon:.6f} acc={accuracy} m, "
+                    f"sub-accuracies all zero or accuracy > {GPS_ACCURACY_FLOOR} m)"
+                )
+                return   # do not cache — keep last valid fix in state.latest_gps
+
+            state.latest_gps = jsonData
             data_print(
                 f"[GPS]  lat={lat:.6f}  lon={lon:.6f}  "
                 f"alt={alt:.1f} m  spd={speed:.2f} m/s  "
