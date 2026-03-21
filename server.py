@@ -611,12 +611,13 @@ class MobilityMode:
             accuracy = jsonData.get("accuracy")
 
             if not _gps_fix_valid(jsonData):
-                log(
-                    f"[GPS]  {device_key} — discarding invalid fix "
+                logger.debug(
+                    f"[GPS]  {device_key} — invalid fix discarded "
                     f"(lat={lat:.6f} lon={lon:.6f} acc={accuracy} m, "
                     f"sub-accuracies all zero or accuracy > {GPS_ACCURACY_FLOOR} m)"
                 )
-                return   # do not cache — keep last valid fix in state.latest_gps
+                state.latest_gps = None   # emit empty GPS columns in the next row
+                return
 
             state.latest_gps = jsonData
             data_print(
@@ -771,6 +772,8 @@ Examples:
 parser.add_argument("--port",     type=int, default=47892)
 parser.add_argument("--tcp",      action="store_true")
 parser.add_argument("--mobility", action="store_true")
+parser.add_argument("--debug",    action="store_true",
+                    help="Enable DEBUG logging (includes discarded GPS fixes, etc.).")
 parser.add_argument("--csv",      metavar="NAME", nargs="?", const="",
                     help="Enable CSV logging (prefix or filename stem).")
 args = parser.parse_args()
@@ -782,7 +785,7 @@ args = parser.parse_args()
 csv_active = args.csv is not None
 
 log_fmt = logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
 
 file_handler = logging.FileHandler("server.log", encoding="utf-8")
 file_handler.setFormatter(log_fmt)
