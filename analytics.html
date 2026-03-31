@@ -8,10 +8,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- uPlot replaces Chart.js + hammer + chartjs-plugin-zoom -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
 <style>
 :root{
   --ac:#e8a317;--ac2:#28bb78;--ac3:#4a8fec;
@@ -52,8 +51,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 #thbtn{padding:4px 8px;font-size:14px;line-height:1}
 [data-theme="light"] #isun{display:inline}[data-theme="light"] #imoon{display:none}
 [data-theme="dark"]  #isun{display:none} [data-theme="dark"]  #imoon{display:inline}
-
-/* server-fetch group */
 .fetch-grp{display:flex;align-items:center;gap:0;border:1px solid var(--bd2);border-radius:4px;overflow:hidden}
 .fetch-grp:focus-within{border-color:var(--ac)}
 #srvsel{font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;max-width:130px;
@@ -66,16 +63,12 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
   letter-spacing:.06em;text-transform:uppercase;border:none;border-left:1px solid var(--bd2);
   background:var(--su2);color:var(--mu);cursor:pointer;white-space:nowrap}
 #srvbtn:hover{color:var(--ac);background:var(--su)}
-
-/* params */
 .pgrp{display:flex;align-items:center;gap:4px;font-family:var(--fm);font-size:10px;color:var(--mu)}
 .pgrp label{white-space:nowrap}
 .pgrp input[type=number]{width:36px;padding:2px 4px;font-family:var(--fm);font-size:10px;
   border:1px solid var(--bd2);border-radius:3px;background:var(--su2);color:var(--tx);
   text-align:center;outline:none}
 .pgrp input[type=number]:focus{border-color:var(--ac)}
-
-/* live mode */
 @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.25}}
 .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;
   animation:livepulse 1.4s ease-in-out infinite;margin-right:3px}
@@ -83,31 +76,29 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 #livebtn.live{color:var(--ac2);border-color:var(--ac2)}
 #livebtn.live:hover{background:rgba(40,187,120,.1)}
 #srvbtn:disabled{opacity:.35;cursor:not-allowed}
-
 #dlbtn,#dlraw{display:none}
 #stmsg{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #si{display:flex;gap:8px;margin-left:auto;flex-shrink:0}
 .chip{font-family:var(--fm);font-size:10px;color:var(--mu);white-space:nowrap}
 .chip b{color:var(--tx)}
 
-/* ── mobile: hide non-essential chips and shrink select ── */
+/* progress bar */
+#progbar{display:none;position:fixed;top:0;left:0;right:0;height:2px;z-index:200;background:var(--bd)}
+#progfill{height:100%;background:var(--ac);transition:width .2s ease;width:0}
+
 @media(max-width:600px){
   #hdr h1{font-size:16px}
   #si{display:none}
   #stmsg{display:none}
   #srvsel{max-width:90px}
   .pgrp label{display:none}
-  /* Allow header top row to wrap so Live button is never clipped */
   #hdr-top{flex-wrap:wrap;height:auto;overflow:visible;padding:4px 8px;gap:4px}
-  /* Hide less-critical controls on small screens to keep header compact */
   .pgrp{display:none}
   #dlbtn,#dlraw{display:none !important}
 }
 
 /* ── body grid ── */
 #body{position:fixed;top:var(--hdr-h,62px);left:0;right:0;bottom:0;display:grid;grid-template-columns:280px 1fr}
-
-/* left panel */
 #lp{display:flex;flex-direction:column;border-right:1px solid var(--bd);overflow:hidden;height:100%}
 #mapw{flex-shrink:0}
 #map{width:100%;background:#ccc}
@@ -141,8 +132,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
   font-family:var(--fm);cursor:pointer;white-space:nowrap}
 #rzoom.vis{display:inline-block}
 #rzoom:hover{border-color:var(--ac);color:var(--ac)}
-
-/* tabs */
 #tabs{flex-shrink:0;display:flex;gap:1px;background:var(--bd)}
 .tab{padding:6px 15px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   cursor:pointer;background:var(--su2);color:var(--mu);border:none;font-family:var(--fh)}
@@ -150,8 +139,6 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
 .tab.on{color:var(--ac);background:var(--su);border-bottom:2px solid var(--ac)}
 .zoom-hint{margin-left:auto;padding:6px 12px;font-family:var(--fm);font-size:9px;
   color:var(--mu);background:var(--su2);letter-spacing:.04em}
-
-/* chart pages — desktop: absolute fill */
 #cpages{position:relative;overflow:hidden;flex-shrink:0}
 .cp{display:none;position:absolute;inset:0;padding:9px 11px;gap:9px}
 .cp.on{display:grid;grid-template-rows:1fr 1fr}
@@ -159,50 +146,41 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:var(--fh)
   padding:7px 9px;overflow:hidden;display:flex;flex-direction:column}
 .cct{flex-shrink:0;font-size:10px;font-weight:600;letter-spacing:.1em;
   text-transform:uppercase;color:var(--mu);margin-bottom:4px}
-.cc canvas{display:block}
+/* uPlot overrides */
+.uplot{background:transparent !important}
+.u-wrap{background:transparent !important}
+.u-title{display:none !important}
+.u-legend{
+  font-family:var(--fm) !important;font-size:9px !important;
+  color:var(--mu) !important;border:none !important;
+  margin:0 !important;padding:2px 0 0 !important;background:transparent !important
+}
+.u-legend .u-series td{padding:1px 4px 1px 2px !important}
+.u-legend .u-marker{width:8px !important;height:2px !important;border-radius:0 !important}
+.u-cursor-x,.u-cursor-y{border-color:var(--ac) !important;opacity:.6 !important}
+.u-select{background:rgba(232,163,23,.08) !important;border:1px solid rgba(232,163,23,.4) !important}
 
-/* ── mobile layout ────────────────────────────────────── */
-/* Map toggle button — only shown on mobile */
+/* mobile */
 #maptoggle{display:none}
-
 @media(max-width:700px){
-  /* Header wraps to multiple rows on mobile */
   #hdr{height:auto;flex-wrap:wrap;padding:5px 8px;overflow:visible}
-
-  /* Body top offset is set dynamically by JS on mobile only */
   #body{top:var(--hdr-h,48px)}
-
-  /* Single column; rows size to content so page can scroll */
   #body{grid-template-columns:1fr;grid-template-rows:auto auto;overflow-y:auto}
-
-  /* Left panel hidden by default; shown via .open class */
   #lp{display:none;height:auto;border-right:none;border-bottom:1px solid var(--bd)}
   #lp.open{display:flex}
-
-  /* Map toggle button visible on mobile */
   #maptoggle{display:inline-flex;align-items:center;gap:4px}
-
-  /* Right panel: natural height, scrolls with the page */
   #rp{height:auto;overflow:visible;min-height:100px}
-
-  /* Chart pages: static flow, stacked vertically */
   #cpages{position:static;overflow:visible;height:auto !important;flex-shrink:1}
-  .cp{position:static;display:none;flex-direction:column;
-      padding:9px 11px;gap:9px;inset:unset}
+  .cp{position:static;display:none;flex-direction:column;padding:9px 11px;gap:9px;inset:unset}
   .cp.on{display:flex;grid-template-rows:unset}
   .cc{min-height:200px;overflow:visible}
-
-  /* Hide desktop-only chrome */
   .zoom-hint{display:none}
   #tlb{padding:4px 8px;gap:6px}
 }
-
-/* drop zone on body (replaces overlay — drag anywhere onto the page) */
 body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:400;
   display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase;color:var(--ac);
   background:var(--ov);pointer-events:none}
-
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
@@ -214,15 +192,12 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
   ondrop="document.body.classList.remove('drag-over');onDrop(event)"
 >
 
+<div id="progbar"><div id="progfill"></div></div>
 
-<!-- ── header ── -->
 <div id="hdr">
   <div id="hdr-top">
     <h1>Moto <span>Analytics</span></h1>
-
-    <!-- Map toggle — only visible on mobile -->
     <button class="hb" id="maptoggle" onclick="toggleMap()">🗺 Map</button>
-
     <button class="hb" onclick="document.getElementById('fi').click()">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -230,7 +205,6 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
       </svg>Load CSV
     </button>
     <input type="file" id="fi" accept=".csv" multiple>
-
     <div class="fetch-grp">
       <select id="srvsel" title="CSV files in server directory">
         <option value="">— no server —</option>
@@ -249,40 +223,31 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
         <option value="10000">10 s</option>
       </select>
     </div>
-
-    <!-- Device selector — shown when more than one device CSV is loaded -->
     <div id="devgrp" style="display:none;align-items:center;gap:4px;border:1px solid var(--bd2);border-radius:4px;overflow:hidden">
       <span style="font-family:var(--fm);font-size:10px;color:var(--mu);padding:0 6px;white-space:nowrap">Device</span>
       <select id="devsel" style="font-family:var(--fm);font-size:10px;padding:0 4px;height:26px;border:none;border-left:1px solid var(--bd2);background:var(--su2);color:var(--tx);outline:none;cursor:pointer"
-        onchange="switchDevice(this.value)">
-      </select>
+        onchange="switchDevice(this.value)"></select>
       <button id="cmpbtn" class="hb" onclick="toggleCompare()" title="Overlay all device tracks on the map" style="border-left:1px solid var(--bd2);border-radius:0">Compare map</button>
     </div>
-
     <button class="hb go" id="dlbtn" onclick="downloadCSV()" title="Download analytics CSV">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
         <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
       </svg>Analytics CSV
     </button>
-
     <button class="hb" id="dlraw" onclick="downloadRaw()" title="Download original raw CSV">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
         <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
       </svg>Raw CSV
     </button>
-
     <div class="pgrp">
       <label>SG</label>
-      <input type="number" id="psg" value="5" min="5" max="11" step="2" title="Savitzky-Golay window (5/7/9/11)"
-             onchange="onParamChange()">
+      <input type="number" id="psg" value="5" min="5" max="11" step="2" title="Savitzky-Golay window (5/7/9/11)" onchange="onParamChange()">
       <label>Alt</label>
-      <input type="number" id="palt" value="5" min="3" max="15" step="2" title="Altitude rolling-mean window"
-             onchange="onParamChange()">
-      <label title="Exclude GPS fixes with horizontal accuracy worse than this value">Acc</label>
-      <select id="pacc" title="Max GPS horizontal accuracy (m) — fixes worse than this are excluded"
-              onchange="onParamChange()"
+      <input type="number" id="palt" value="5" min="3" max="15" step="2" title="Altitude rolling-mean window" onchange="onParamChange()">
+      <label title="Exclude GPS fixes worse than this">Acc</label>
+      <select id="pacc" title="Max GPS horizontal accuracy (m)" onchange="onParamChange()"
               style="font-family:var(--fm);font-size:10px;padding:0 2px;height:20px;
                      border:1px solid var(--bd2);border-radius:3px;background:var(--su2);
                      color:var(--tx);outline:none;cursor:pointer">
@@ -292,12 +257,10 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
         <option value="100">100 m</option>
       </select>
     </div>
-
     <button class="hb" id="thbtn" onclick="toggleTheme()">
       <span id="isun">☀️</span><span id="imoon">🌙</span>
     </button>
   </div>
-
   <div id="hdr-bot">
     <span id="stmsg"></span>
     <div id="si">
@@ -310,7 +273,6 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
   </div>
 </div>
 
-<!-- ── body ── -->
 <div id="body">
   <div id="lp">
     <div id="mapw"><div id="map"></div></div>
@@ -319,7 +281,6 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
       <div id="ic"><span style="font-family:var(--fm);font-size:11px;color:var(--mu)">Hover a chart or drag the slider</span></div>
     </div>
   </div>
-
   <div id="rp">
     <div id="tlb">
       <label>Time</label>
@@ -336,20 +297,20 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
     </div>
     <div id="cpages">
       <div class="cp on" id="p-vel">
-        <div class="cc"><div class="cct">Speed — GPS &amp; smoothed (m/s)</div><canvas id="c-spd"></canvas></div>
-        <div class="cc"><div class="cct">GPS Bearing (°)</div><canvas id="c-brg"></canvas></div>
+        <div class="cc"><div class="cct">Speed — GPS &amp; smoothed (m/s)</div><div id="c-spd"></div></div>
+        <div class="cc"><div class="cct">GPS Bearing (°)</div><div id="c-brg"></div></div>
       </div>
       <div class="cp" id="p-acc">
-        <div class="cc"><div class="cct">Forward Acceleration — raw &amp; smoothed (m/s²)</div><canvas id="c-facc"></canvas></div>
-        <div class="cc"><div class="cct">Lateral Acceleration — centripetal v·dθ/dt (m/s²)</div><canvas id="c-lacc"></canvas></div>
+        <div class="cc"><div class="cct">Forward Acceleration — raw &amp; smoothed (m/s²)</div><div id="c-facc"></div></div>
+        <div class="cc"><div class="cct">Lateral Acceleration — centripetal v·dθ/dt (m/s²)</div><div id="c-lacc"></div></div>
       </div>
       <div class="cp" id="p-pos">
-        <div class="cc"><div class="cct">Altitude — GPS &amp; smoothed Δ (m)</div><canvas id="c-alt"></canvas></div>
-        <div class="cc"><div class="cct">Cumulative Distance — Haversine (m)</div><canvas id="c-dst"></canvas></div>
+        <div class="cc"><div class="cct">Altitude — GPS &amp; smoothed Δ (m)</div><div id="c-alt"></div></div>
+        <div class="cc"><div class="cct">Cumulative Distance — Haversine (m)</div><div id="c-dst"></div></div>
       </div>
       <div class="cp" id="p-vib">
-        <div class="cc"><div class="cct">IMU load — accel std magnitude (m/s²)</div><canvas id="c-vib"></canvas></div>
-        <div class="cc"><div class="cct">GPS Accuracy — H &amp; V (m)</div><canvas id="c-hacc"></canvas></div>
+        <div class="cc"><div class="cct">IMU load — accel std magnitude (m/s²)</div><div id="c-vib"></div></div>
+        <div class="cc"><div class="cct">GPS Accuracy — H &amp; V (m)</div><div id="c-hacc"></div></div>
       </div>
     </div>
   </div>
@@ -359,223 +320,151 @@ body.drag-over::after{content:'Drop CSV to load';position:fixed;inset:0;z-index:
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════════
-   Physical constants  (must match analytics.py exactly)
+   Web Worker source — runs in a separate thread.
+   Contains all CSV parsing (via PapaParse importScripts) and the
+   full analyse() pipeline.  Returns columnar TypedArrays which are
+   transferred to the main thread zero-copy via Transferable.
 ═══════════════════════════════════════════════════════════════ */
-const G_STD          = 9.80665;
-const R_EARTH        = 6_371_000;
-const ACCEL_LIMIT    = 12.0;      // m/s²  physical clip for GPS-derived accel
-const MIN_SPD_LAT    = 2.0;       // m/s   below this, bearing is unreliable
+const WORKER_SRC = `
+'use strict';
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
+
+/* Physical constants — must match analytics.py exactly */
+const ACCEL_LIMIT = 12.0;   // m/s²  physical clip for GPS-derived accel
+const MIN_SPD_LAT = 2.0;    // m/s   below this, bearing is unreliable
+const R_EARTH     = 6371000;
 
 /* Savitzky-Golay window=N polyorder=2 smoothing kernels.
    Coefficients from Savitzky & Golay (1964).  Only odd windows ≥ 5 offered
    in the UI because window=3 polyorder=2 is an exact fit (no smoothing). */
 const SG_KERNELS = {
-  5:  { c: [-3,  12,  17,  12,  -3],                          n: 35  },
-  7:  { c: [-2,   3,   6,   7,   6,   3,  -2],                n: 21  },
-  9:  { c: [-21, 14,  39,  54,  59,  54,  39,  14, -21],      n: 231 },
-  11: { c: [-36,  9,  44,  69,  84,  89,  84,  69,  44,  9, -36], n: 429 },
+  5:  {c:[-3,12,17,12,-3],n:35},
+  7:  {c:[-2,3,6,7,6,3,-2],n:21},
+  9:  {c:[-21,14,39,54,59,54,39,14,-21],n:231},
+  11: {c:[-36,9,44,69,84,89,84,69,44,9,-36],n:429}
 };
-
-/* Display clamps — suppress GPS spikes in charts only; underlying data unchanged */
-const CLAMP = {
-  speed_ms:           [0,  80],
-  speed_ms_smooth:    [0,  80],
-  fwd_accel_ms2:      [-15, 15],
-  fwd_accel_smooth:   [-15, 15],
-  lat_accel_ms2:      [-15, 15],
-  vibration_ms2:      [0,  20],
-  gps_h_accuracy_m:   [0, 150],
-  gps_v_accuracy_m:   [0, 150],
-  gps_bearing_deg:    [0, 360],
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   Analytics helper functions
-═══════════════════════════════════════════════════════════════ */
 
 /* Forward-fill nulls/NaN; then back-fill any leading nulls. */
-function ffbfill(arr) {
-  const n = arr.length, out = arr.slice();
-  let last = null;
-  for(let i=0;i<n;i++){
-    const v=out[i];
-    if(v!=null && isFinite(v)) last=v;
-    else if(last!=null) out[i]=last;
-  }
-  last = null;
-  for(let i=n-1;i>=0;i--){
-    const v=out[i];
-    if(v!=null && isFinite(v)) last=v;
-    else if(last!=null) out[i]=last;
-  }
+function ffbfill(arr){
+  const out=arr.slice(); let last=null;
+  for(let i=0;i<out.length;i++){const v=out[i];if(v!=null&&isFinite(v))last=v;else if(last!=null)out[i]=last;}
+  last=null;
+  for(let i=out.length-1;i>=0;i--){const v=out[i];if(v!=null&&isFinite(v))last=v;else if(last!=null)out[i]=last;}
   return out;
 }
-
 /* Central-difference gradient (matches np.gradient behaviour exactly):
    interior: (y[i+1]-y[i-1]) / (x[i+1]-x[i-1])
    boundaries: one-sided first-difference. */
-function gradient(y, x) {
-  const n=y.length, g=new Array(n);
-  if(n===1){ g[0]=0; return g; }
-  g[0]   = (y[1]-y[0])   / Math.max(x[1]-x[0],   1e-9);
-  g[n-1] = (y[n-1]-y[n-2])/ Math.max(x[n-1]-x[n-2],1e-9);
-  for(let i=1;i<n-1;i++)
-    g[i] = (y[i+1]-y[i-1]) / Math.max(x[i+1]-x[i-1], 1e-9);
+function gradient(y,x){
+  const n=y.length,g=new Array(n);
+  if(n===1){g[0]=0;return g;}
+  g[0]=(y[1]-y[0])/Math.max(x[1]-x[0],1e-9);
+  g[n-1]=(y[n-1]-y[n-2])/Math.max(x[n-1]-x[n-2],1e-9);
+  for(let i=1;i<n-1;i++)g[i]=(y[i+1]-y[i-1])/Math.max(x[i+1]-x[i-1],1e-9);
   return g;
 }
-
 /* Unwrap radian array — removes 2π jumps (matches np.unwrap). */
-function unwrapRad(arr) {
+function unwrapRad(arr){
   const out=arr.slice();
-  for(let i=1;i<out.length;i++){
-    let d=out[i]-out[i-1];
-    while(d >  Math.PI) d-=2*Math.PI;
-    while(d < -Math.PI) d+=2*Math.PI;
-    out[i]=out[i-1]+d;
-  }
+  for(let i=1;i<out.length;i++){let d=out[i]-out[i-1];while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;out[i]=out[i-1]+d;}
   return out;
 }
-
 /* 3-point centred median filter — removes single-sample GPS speed spikes. */
-function medFilter3(arr) {
-  const n=arr.length, out=arr.slice();
-  for(let i=1;i<n-1;i++){
-    const v=[arr[i-1],arr[i],arr[i+1]].slice().sort((a,b)=>a-b);
-    out[i]=v[1];
-  }
+function medFilter3(arr){
+  const n=arr.length,out=arr.slice();
+  for(let i=1;i<n-1;i++){const v=[arr[i-1],arr[i],arr[i+1]].slice().sort((a,b)=>a-b);out[i]=v[1];}
   return out;
 }
-
 /* Rolling centred mean, min_periods=1 (matches pandas rolling(w,center=True,min_periods=1).mean()). */
-function rollingMean(arr, w) {
-  const h=Math.floor(w/2), n=arr.length, out=new Array(n);
-  for(let i=0;i<n;i++){
-    const lo=Math.max(0,i-h), hi=Math.min(n-1,i+h);
-    let s=0,c=0;
-    for(let j=lo;j<=hi;j++){ s+=arr[j]; c++; }
-    out[i]=s/c;
-  }
+function rollingMean(arr,w){
+  const h=Math.floor(w/2),n=arr.length,out=new Array(n);
+  for(let i=0;i<n;i++){const lo=Math.max(0,i-h),hi=Math.min(n-1,i+h);let s=0,c=0;for(let j=lo;j<=hi;j++){s+=arr[j];c++;}out[i]=s/c;}
   return out;
 }
-
 /* Savitzky-Golay smoothing, nearest-edge padding (matches scipy mode='nearest'). */
-function savgolSmooth(arr, w) {
-  const k=SG_KERNELS[w]||SG_KERNELS[5];
-  const c=k.c, norm=k.n, half=Math.floor(c.length/2);
-  const n=arr.length, out=new Array(n);
-  for(let i=0;i<n;i++){
-    let s=0;
-    for(let j=0;j<c.length;j++){
-      const idx=Math.max(0,Math.min(n-1,i+j-half));
-      s+=c[j]*arr[idx];
-    }
-    out[i]=s/norm;
-  }
+function savgolSmooth(arr,w){
+  const k=SG_KERNELS[w]||SG_KERNELS[5],c=k.c,norm=k.n,half=Math.floor(c.length/2),n=arr.length,out=new Array(n);
+  for(let i=0;i<n;i++){let s=0;for(let j=0;j<c.length;j++){const idx=Math.max(0,Math.min(n-1,i+j-half));s+=c[j]*arr[idx];}out[i]=s/norm;}
   return out;
 }
-
 /* Haversine step distance in metres between two WGS-84 points. */
-function haversineStep(la1,lo1,la2,lo2) {
-  const toR=Math.PI/180;
-  la1*=toR; lo1*=toR; la2*=toR; lo2*=toR;
-  const dla=la2-la1, dlo=lo2-lo1;
-  const a=Math.sin(dla/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dlo/2)**2;
-  return 2*R_EARTH*Math.asin(Math.sqrt(Math.max(0,Math.min(1,a))));
+function haversineStep(la1,lo1,la2,lo2){
+  const R=Math.PI/180;la1*=R;lo1*=R;la2*=R;lo2*=R;
+  const dla=la2-la1,dlo=lo2-lo1,a=Math.sin(dla/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dlo/2)**2;
+  return 2*6371000*Math.asin(Math.sqrt(Math.max(0,Math.min(1,a))));
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   Main analytics function  (port of analytics.py: analyse())
-   Accepts the raw rows from PapaParse and returns an array of
-   result-row objects whose keys exactly match analytics.py output.
-═══════════════════════════════════════════════════════════════ */
-function analyse(raw, sgW, altW, maxHAcc) {
+function analyse(raw,sgW,altW,maxHAcc){
   const n=raw.length;
-  if(n<2) throw new Error('Need at least 2 rows.');
+  if(n<2)throw new Error('Need at least 2 rows.');
+  sgW=Math.max(5,sgW);if(sgW%2===0)sgW++;sgW=SG_KERNELS[sgW]?sgW:5;
+  const p=f=>{const v=parseFloat(f);return isFinite(v)?v:NaN;};
 
-  /* Validate SG window: must be odd, in our kernel table */
-  sgW=Math.max(5,sgW); if(sgW%2===0) sgW++;
-  sgW=SG_KERNELS[sgW]?sgW:5;
-
-  /* ── Timestamps / Δt ─────────────────────────────────────── */
-  const tms = raw.map(r=>new Date(String(r.received_at).replace(' ','T')).getTime()/1000);
-  const t0  = tms[0];
-  const elapsed = tms.map(v=>v-t0);
-
-  const dt=new Array(n);
-  for(let i=1;i<n;i++) dt[i]=Math.max(elapsed[i]-elapsed[i-1],0.001);
-  dt[0]=n>1?dt[1]:5.0;
-
+  /* Timestamps — use Float64 to preserve sub-second precision over multi-day spans */
+  const tms=raw.map(r=>new Date(String(r.received_at).replace(' ','T')).getTime());
+  const t0=tms[0];
+  const elapsed=tms.map(v=>(v-t0)/1000);
   /* Cumulative time used as x-axis for gradient (matches np.maximum(elapsed,1e-6)). */
   const timeS=elapsed.map(v=>Math.max(v,1e-6));
+  const dt=new Array(n);
+  for(let i=1;i<n;i++)dt[i]=Math.max(elapsed[i]-elapsed[i-1],0.001);
+  dt[0]=n>1?dt[1]:5.0;
 
   /* ── GPS columns ─────────────────────────────────────────── */
-  const p=f=>isFinite(parseFloat(f))?parseFloat(f):NaN;
-  const lat  = raw.map(r=>p(r.latitude));
-  const lon  = raw.map(r=>p(r.longitude));
-  const alt  = raw.map(r=>p(r.altitude));
-  const gspd = raw.map(r=>p(r.speed));
-  const hAcc = raw.map(r=>p(r.accuracy));
-  const vAcc = raw.map(r=>p(r.vertical_accuracy));
-  const brRaw= raw.map(r=>p(r.bearing));
-
+  const lat=raw.map(r=>p(r.latitude));
+  const lon=raw.map(r=>p(r.longitude));
+  const alt=raw.map(r=>p(r.altitude));
+  const gspd=raw.map(r=>p(r.speed));
+  const hAcc=raw.map(r=>p(r.accuracy));
+  const vAcc=raw.map(r=>p(r.vertical_accuracy));
+  const brRaw=raw.map(r=>p(r.bearing));
   /* gps_time is a Unix ms timestamp from the GPS chipset — more accurate
      than received_at (server wall clock) but only present on valid fixes. */
-  const gpsTimeStr = raw.map(r=>{
-    const ms=parseFloat(r.gps_time);
-    if(!isFinite(ms)||ms<=0) return null;
-    return new Date(ms).toTimeString().slice(0,8); /* HH:MM:SS local */
-  });
+  const gpsTimeMs=raw.map(r=>{const v=parseFloat(r.gps_time);return isFinite(v)&&v>0?v:NaN;});
 
   /* A fix is valid only if coordinates are finite AND both horizontal and
      vertical accuracy are within the user-selected threshold.  Fixes that
      exceed the limit are treated as missing so they get forward-filled
      rather than creating spikes on the map and in derived channels. */
-  const accLimit = isFinite(maxHAcc) && maxHAcc > 0 ? maxHAcc : Infinity;
+  const accLimit=isFinite(maxHAcc)&&maxHAcc>0?maxHAcc:Infinity;
   const validGPS=lat.map((la,i)=>
-    isFinite(la) && isFinite(lon[i]) && isFinite(alt[i]) &&
-    (isNaN(hAcc[i]) || hAcc[i] <= accLimit) &&
-    (isNaN(vAcc[i]) || vAcc[i] <= accLimit)
+    isFinite(la)&&isFinite(lon[i])&&isFinite(alt[i])&&
+    (isNaN(hAcc[i])||hAcc[i]<=accLimit)&&
+    (isNaN(vAcc[i])||vAcc[i]<=accLimit)
   );
 
   /* ── Velocity ────────────────────────────────────────────── */
   /* Forward-fill GPS speed gaps, fill leading gap with 0. */
-  const spdFill  = ffbfill(gspd.map(v=>isFinite(v)?v:null)).map(v=>v??0);
-  const speedMS  = medFilter3(spdFill);           /* 3-pt median spike removal */
-  const spdSmth  = rollingMean(speedMS,3);        /* 3-pt centred MA display  */
+  const spdFill=ffbfill(gspd.map(v=>isFinite(v)?v:null)).map(v=>v??0);
+  const speedMS=medFilter3(spdFill);          /* 3-pt median spike removal */
+  const spdSmth=rollingMean(speedMS,3);       /* 3-pt centred MA display   */
 
   /* ── Forward acceleration: d(speed)/dt ──────────────────── */
-  const fwdRaw    = gradient(speedMS, timeS);
-  const fwdClip   = fwdRaw.map(v=>Math.max(-ACCEL_LIMIT,Math.min(ACCEL_LIMIT,v)));
-  const fwdSmooth = savgolSmooth(fwdClip, sgW);
+  const fwdRaw=gradient(speedMS,timeS);
+  const fwdClip=fwdRaw.map(v=>Math.max(-ACCEL_LIMIT,Math.min(ACCEL_LIMIT,v)));
+  const fwdSmooth=savgolSmooth(fwdClip,sgW);
 
   /* ── Lateral (centripetal) acceleration: v × dθ/dt ──────── */
   /* Blank bearing at low speed before filling to prevent stale-heading spikes. */
-  const brMasked = brRaw.map((b,i)=>speedMS[i]>=MIN_SPD_LAT&&isFinite(b)?b:null);
-  const brFill   = ffbfill(brMasked).map(v=>v??0);
-  const brUnwrap = unwrapRad(brFill.map(v=>v*Math.PI/180));
-  const brRate   = gradient(brUnwrap, timeS);                 /* rad/s */
-  const latAccel = speedMS.map((s,i)=>{
-    if(s<MIN_SPD_LAT) return 0;
-    return Math.max(-ACCEL_LIMIT, Math.min(ACCEL_LIMIT, s*brRate[i]));
+  const brMasked=brRaw.map((b,i)=>speedMS[i]>=MIN_SPD_LAT&&isFinite(b)?b:null);
+  const brFill=ffbfill(brMasked).map(v=>v??0);
+  const brUnwrap=unwrapRad(brFill.map(v=>v*Math.PI/180));
+  const brRate=gradient(brUnwrap,timeS);                /* rad/s */
+  const latAccel=speedMS.map((s,i)=>{
+    if(s<MIN_SPD_LAT)return 0;
+    return Math.max(-ACCEL_LIMIT,Math.min(ACCEL_LIMIT,s*brRate[i]));
   });
 
   /* ── Haversine cumulative distance ───────────────────────── */
-  const distStep=new Array(n).fill(0);
-  let pLa=null,pLo=null;
-  for(let i=0;i<n;i++){
-    if(validGPS[i]){
-      if(pLa!==null) distStep[i]=haversineStep(pLa,pLo,lat[i],lon[i]);
-      pLa=lat[i]; pLo=lon[i];
-    }
-  }
-  const distM=new Array(n);
-  let cum=0; for(let i=0;i<n;i++){ cum+=distStep[i]; distM[i]=cum; }
+  const distStep=new Array(n).fill(0);let pLa=null,pLo=null;
+  for(let i=0;i<n;i++){if(validGPS[i]){if(pLa!==null)distStep[i]=haversineStep(pLa,pLo,lat[i],lon[i]);pLa=lat[i];pLo=lon[i];}}
+  const distM=new Array(n);let cum=0;for(let i=0;i<n;i++){cum+=distStep[i];distM[i]=cum;}
 
   /* ── Altitude change ─────────────────────────────────────── */
-  const altFF    = ffbfill(alt.map((v,i)=>validGPS[i]?v:null)).map(v=>v??0);
+  const altFF=ffbfill(alt.map((v,i)=>validGPS[i]?v:null)).map(v=>v??0);
   /* Per-step altitude delta: difference between consecutive samples. */
-  const altChg   = altFF.map((v,i)=>i===0 ? 0 : v-altFF[i-1]);
-  const altSmth  = rollingMean(altChg, altW);
+  const altChg=altFF.map((v,i)=>i===0?0:v-altFF[i-1]);
+  const altSmth=rollingMean(altChg,altW);
 
   /* ── IMU dynamic load — within-window standard deviation ─── */
   /* √(σx² + σy² + σz²) measures how much the raw accelerometer samples
@@ -588,261 +477,994 @@ function analyse(raw, sgW, altW, maxHAcc) {
   const sx=raw.map(r=>parseFloat(r.accel_std_x));
   const sy=raw.map(r=>parseFloat(r.accel_std_y));
   const sz=raw.map(r=>parseFloat(r.accel_std_z));
-  const hasStd = sx.some(v=>isFinite(v)&&v>0);
-
+  const hasStd=sx.some(v=>isFinite(v)&&v>0);
   let vib;
   if(hasStd){
-    vib=sx.map((x,i)=>{
-      const vx=isFinite(x)?x:0, vy=isFinite(sy[i])?sy[i]:0, vz=isFinite(sz[i])?sz[i]:0;
-      return Math.sqrt(vx*vx+vy*vy+vz*vz);
-    });
+    vib=sx.map((x,i)=>{const vx=isFinite(x)?x:0,vy=isFinite(sy[i])?sy[i]:0,vz=isFinite(sz[i])?sz[i]:0;return Math.sqrt(vx*vx+vy*vy+vz*vz);});
   } else {
     /* Fallback: self-calibrated mean-magnitude method */
     const ax=raw.map(r=>parseFloat(r.accel_avg_x)||0);
     const ay=raw.map(r=>parseFloat(r.accel_avg_y)||0);
     const az=raw.map(r=>parseFloat(r.accel_avg_z)||0);
-    const accelMag=ax.map((x,i)=>Math.sqrt(x*x+ay[i]*ay[i]+az[i]*az[i]));
-    const staticMags=accelMag.filter((_,i)=>speedMS[i]<0.5);
-    const gLocal=staticMags.length>=10
-      ?staticMags.reduce((a,b)=>a+b,0)/staticMags.length
-      :G_STD;
-    vib=accelMag.map(m=>Math.abs(m-gLocal));
+    const mag=ax.map((x,i)=>Math.sqrt(x*x+ay[i]*ay[i]+az[i]*az[i]));
+    const sm=mag.filter((_,i)=>speedMS[i]<0.5);
+    const gLocal=sm.length>=10?sm.reduce((a,b)=>a+b,0)/sm.length:9.80665;
+    vib=mag.map(m=>Math.abs(m-gLocal));
   }
 
-  /* ── Assemble result rows ─────────────────────────────────── */
-  const rows=[];
-  const f6=v=>isFinite(v)?+v.toFixed(6):null;
-  const f3=v=>isFinite(v)?+v.toFixed(3):null;
-  const f1=v=>isFinite(v)?+v.toFixed(1):null;
+  /* ── Pack into TypedArrays ───────────────────────────────────
+     elapsed_s and all timestamps use Float64 to preserve sub-second
+     precision over multi-day spans (a 4-day span in seconds exceeds
+     Float32's ~7 significant-digit precision).
+     All other numeric columns use Float32 — ~10× smaller than an
+     equivalent JS object array and fast enough for all derived maths.
+     Arrays are returned as Transferable so the main thread receives
+     them zero-copy without cloning the underlying ArrayBuffers. */
+  const F32=(arr,mask)=>{const out=new Float32Array(n);for(let i=0;i<n;i++){const v=arr[i];out[i]=(mask&&!mask[i])?NaN:(isFinite(v)?v:NaN);}return out;};
+  const F64=(arr)=>{const out=new Float64Array(n);for(let i=0;i<n;i++){const v=arr[i];out[i]=isFinite(v)?v:NaN;}return out;};
 
-  for(let i=0;i<n;i++){
-    rows.push({
-      received_at:         raw[i].received_at,
-      gps_time_str:        gpsTimeStr[i],
-      elapsed_s:           f3(elapsed[i]),
-      dt_s:                f3(dt[i]),
-      gps_fix_valid:       validGPS[i]?1:0,
-      speed_ms:            f6(speedMS[i]),
-      speed_ms_smooth:     f6(spdSmth[i]),
-      fwd_accel_ms2:       f6(fwdClip[i]),
-      fwd_accel_smooth:    f6(fwdSmooth[i]),
-      lat_accel_ms2:       f6(latAccel[i]),
-      distance_m:          f3(distM[i]),
-      altitude_m:          f3(altFF[i]),
-      alt_change_m:        f3(altChg[i]),
-      alt_change_smooth_m: f3(altSmth[i]),
-      vibration_ms2:       f6(vib[i]),
-      latitude:            validGPS[i]?f6(lat[i]):null,
-      longitude:           validGPS[i]?f6(lon[i]):null,
-      gps_bearing_deg:     f3(brFill[i]),
-      gps_h_accuracy_m:    f3(hAcc[i]),
-      gps_v_accuracy_m:    f3(vAcc[i]),
-    });
-  }
-  return rows;
+  const cols={
+    elapsed_s:           F64(elapsed),          /* x-axis — must be Float64 */
+    dt_s:                F32(dt),
+    speed_ms:            F32(speedMS),
+    speed_ms_smooth:     F32(spdSmth),
+    fwd_accel_ms2:       F32(fwdClip),
+    fwd_accel_smooth:    F32(fwdSmooth),
+    lat_accel_ms2:       F32(latAccel),
+    distance_m:          F32(distM),
+    altitude_m:          F32(altFF),
+    alt_change_m:        F32(altChg),
+    alt_change_smooth_m: F32(altSmth),
+    vibration_ms2:       F32(vib),
+    latitude:            F32(lat,validGPS),
+    longitude:           F32(lon,validGPS),
+    gps_bearing_deg:     F32(brFill),
+    gps_h_accuracy_m:    F32(hAcc,validGPS),
+    gps_v_accuracy_m:    F32(vAcc,validGPS),
+    gps_fix_valid:       new Uint8Array(validGPS.map(v=>v?1:0)),
+    received_at_ms:      F64(tms),
+    gps_time_ms:         F64(gpsTimeMs),
+  };
+
+  /* Stats for header chips */
+  let maxV=0;for(let i=0;i<n;i++)if(cols.speed_ms[i]>maxV)maxV=cols.speed_ms[i];
+  let daltFirst=NaN,daltLast=NaN;
+  for(let i=0;i<n;i++)if(isFinite(cols.altitude_m[i])){daltFirst=cols.altitude_m[i];break;}
+  for(let i=n-1;i>=0;i--)if(isFinite(cols.altitude_m[i])){daltLast=cols.altitude_m[i];break;}
+  const stats={
+    n,
+    duration_s:  elapsed[n-1],
+    distance_m:  distM[n-1],
+    max_speed_ms:maxV,
+    delta_alt_m: (isFinite(daltFirst)&&isFinite(daltLast))?daltLast-daltFirst:0
+  };
+  return {cols,stats};
 }
+
+self.onmessage=function(e){
+  const {csvText,sgW,altW,maxHAcc,label}=e.data;
+  self.postMessage({type:'progress',pct:5,msg:'Parsing CSV…'});
+  Papa.parse(csvText,{
+    header:true,dynamicTyping:false,skipEmptyLines:true,
+    complete(r){
+      if(!r.data||r.data.length<2){self.postMessage({type:'error',msg:'CSV has fewer than 2 rows.',label});return;}
+      self.postMessage({type:'progress',pct:40,msg:'Analysing '+r.data.length.toLocaleString()+' rows…'});
+      let result;
+      try{result=analyse(r.data,sgW,altW,maxHAcc);}
+      catch(err){self.postMessage({type:'error',msg:err.message,label});return;}
+      self.postMessage({type:'progress',pct:92,msg:'Transferring…'});
+      const transferables=Object.values(result.cols).filter(v=>v&&v.buffer instanceof ArrayBuffer).map(v=>v.buffer);
+      self.postMessage({type:'done',cols:result.cols,stats:result.stats,label},transferables);
+    },
+    error(err){self.postMessage({type:'error',msg:err.message,label});}
+  });
+};
+`;
+
+/* ═══════════════════════════════════════════════════════════════
+   Display clamps — suppress GPS spikes in charts only; underlying data unchanged
+═══════════════════════════════════════════════════════════════ */
+const CLAMP={
+  speed_ms:[0,80],speed_ms_smooth:[0,80],
+  fwd_accel_ms2:[-15,15],fwd_accel_smooth:[-15,15],lat_accel_ms2:[-15,15],
+  vibration_ms2:[0,20],gps_h_accuracy_m:[0,150],gps_v_accuracy_m:[0,150],gps_bearing_deg:[0,360],
+};
 
 /* ═══════════════════════════════════════════════════════════════
    Multi-device state
    DEVICES maps a device label (filename stem or IP tag) to its
-   analytics result array.  The active device is what the charts
-   and map show.  All device tracks are shown on the map in
-   compare mode.
+   typed-array columns and stats.  The active device is what the
+   charts and map show.  All device tracks are shown on the map
+   in compare mode.
 ═══════════════════════════════════════════════════════════════ */
 const DEVICE_COLORS=['#e8a317','#28bb78','#4a8fec','#d94f4f','#9f6fe0',
                      '#24c0d4','#e06fc0','#7ec828','#d47b28','#8896a8'];
-const DEVICES={};          /* label → {raw, data, rawText} */
-let activeDevice=null;     /* currently displayed device label */
-let compareMode=false;     /* show all tracks on map simultaneously */
-const mapTracks={};        /* label → Leaflet polyline */
+const DEVICES={};        /* label → {rawText, cols, stats} */
+let activeDevice=null;   /* currently displayed device label */
+let compareMode=false;   /* show all tracks on map simultaneously */
+const mapTracks={};      /* label → Leaflet polyline           */
 
 function deviceColor(label){
   const idx=Object.keys(DEVICES).indexOf(label);
   return DEVICE_COLORS[idx%DEVICE_COLORS.length];
 }
 
-/* Register / update a device's data, then rebuild the UI. */
-function registerDevice(label, rawRows, rawText){
-  const sgW =parseInt(document.getElementById('psg').value)||5;
-  const accW=parseInt(document.getElementById('pacc').value)||20;
-  const altW=parseInt(document.getElementById('palt').value)||5;
-  let analysed;
-  try{ analysed=analyse(rawRows,sgW,altW,accW); }
-  catch(e){ st('Analytics error ('+label+'): '+e.message); return; }
-  DEVICES[label]={raw:rawRows, data:analysed, rawText};
-  updateDeviceSelector();
-  if(!activeDevice||activeDevice===label) activateDevice(label);
+/* Active device shortcuts */
+let COLS=null;   /* typed-array columns for the active device         */
+let STATS=null;  /* summary stats object for the active device        */
+let RAW_TEXT=''; /* original CSV text (for re-analysis & raw download) */
+let currentFile='analytics';
+
+/* ═══════════════════════════════════════════════════════════════
+   uPlot state
+   plots maps chart container id → uPlot instance.
+   CURSOR_SYNC links all charts so hovering one moves the cursor
+   on all others simultaneously (uPlot's built-in sync mechanism).
+═══════════════════════════════════════════════════════════════ */
+const plots={};   /* chartId → uPlot instance */
+let CURSOR_SYNC=null; /* initialised in the load handler once uPlot is guaranteed present */
+let CANVAS_H=120;
+let _isZoomed=false;
+let _zoomLock=false;
+let scrubberIdx=null;  /* row index driven by the timeline slider;
+                          drawn as a dashed vertical line by the plugin below */
+
+/* uPlot plugin — draws the slider-driven scrubber line on every chart.
+   uPlot's own cursor is driven by mouse hover; this separate line lets the
+   timeline slider and map-click navigate independently of the mouse. */
+const scrubberPlugin=()=>({
+  hooks:{
+    draw:[(u)=>{
+      if(scrubberIdx==null||!COLS) return;
+      const xVal=COLS.elapsed_s[scrubberIdx];
+      if(!isFinite(xVal)) return;
+      const cx=u.valToPos(xVal,'x',true);
+      if(!isFinite(cx)) return;
+      const {ctx,bbox}=u;
+      ctx.save();
+      const dark=document.documentElement.dataset.theme==='dark';
+      ctx.strokeStyle=dark?'rgba(255,255,255,.65)':'rgba(0,0,0,.45)';
+      ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(cx,bbox.top);ctx.lineTo(cx,bbox.top+bbox.height);ctx.stroke();
+      ctx.restore();
+    }]
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Worker management
+   Each load/re-analyse creates a fresh Worker from the inline
+   WORKER_SRC blob.  The previous worker is terminated first so
+   that a rapid param change or file reload never leaves a stale
+   worker consuming CPU in the background.
+═══════════════════════════════════════════════════════════════ */
+let _worker=null;
+let _workerBusy=false;
+
+function getWorker(){
+  if(_worker){_worker.terminate();}
+  const blob=new Blob([WORKER_SRC],{type:'application/javascript'});
+  _worker=new Worker(URL.createObjectURL(blob));
+  _worker.onmessage=onWorkerMessage;
+  _worker.onerror=e=>{ st('Worker error: '+e.message); hideProgress(); _workerBusy=false; };
+  return _worker;
 }
 
+function dispatchToWorker(label,csvText){
+  _workerBusy=true;
+  showProgress(0,'Starting…');
+  const w=getWorker();
+  const sgW=parseInt(document.getElementById('psg').value)||5;
+  const altW=parseInt(document.getElementById('palt').value)||5;
+  const maxHAcc=parseInt(document.getElementById('pacc').value)||20;
+  w.postMessage({csvText,sgW,altW,maxHAcc,label});
+}
+
+function onWorkerMessage(e){
+  const msg=e.data;
+  if(msg.type==='progress'){
+    showProgress(msg.pct,msg.msg);
+    return;
+  }
+  if(msg.type==='error'){
+    st('Error ('+(msg.label||'')+'): '+msg.msg);
+    hideProgress();_workerBusy=false;_liveMode=false;
+    return;
+  }
+  if(msg.type==='done'){
+    hideProgress();_workerBusy=false;
+    const {cols,stats,label}=msg;
+    const rawText=DEVICES[label]?._pendingRaw||'';
+    if(DEVICES[label])delete DEVICES[label]._pendingRaw;
+    DEVICES[label]={rawText,cols,stats};
+
+    if(_liveMode){
+      /* Live poll completed — update active device in-place without full rebuild */
+      _liveMode=false;
+      if(!activeDevice||activeDevice===label){
+        COLS=cols;STATS=stats;RAW_TEXT=rawText;activeDevice=label;currentFile=label;
+      }
+      liveRefreshCharts();
+      document.getElementById('dlbtn').style.display='flex';
+      document.getElementById('dlraw').style.display=rawText?'flex':'none';
+      st(`Live · ${stats.n.toLocaleString()} rows · ${new Date().toTimeString().slice(0,8)}`);
+    } else {
+      /* Normal load — full activate */
+      updateDeviceSelector();
+      if(!activeDevice||activeDevice===label)activateDevice(label);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Progress bar
+═══════════════════════════════════════════════════════════════ */
+function showProgress(pct,msg){
+  document.getElementById('progbar').style.display='block';
+  document.getElementById('progfill').style.width=pct+'%';
+  if(msg) st(msg);
+}
+function hideProgress(){
+  document.getElementById('progbar').style.display='none';
+  document.getElementById('progfill').style.width='0';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   File loading
+═══════════════════════════════════════════════════════════════ */
+document.getElementById('fi').addEventListener('change',e=>{
+  const files=[...e.target.files];
+  files.forEach(f=>{ if(f.name.endsWith('.csv')) parseCSVFile(f); });
+  e.target.value='';
+});
+function onDrop(e){
+  e.preventDefault();
+  [...e.dataTransfer.files].forEach(f=>{ if(f.name.endsWith('.csv')) parseCSVFile(f); });
+}
+
+function parseCSVFile(file){
+  const label=file.name.replace(/\.[^.]+$/,'');
+  st('Reading '+file.name+'…');
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const text=ev.target.result;
+    /* Stash raw text before worker consumes it */
+    if(!DEVICES[label])DEVICES[label]={};
+    DEVICES[label]._pendingRaw=text;
+    dispatchToWorker(label,text);
+  };
+  reader.readAsText(file);
+}
+
+/* ── Server listing ── */
+let _dirBase='';
+function loadFileList(){
+  const sel=document.getElementById('srvsel');
+  sel.innerHTML='<option value="">Loading…</option>';
+  fetch('logs/')
+    .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);const u=r.url;_dirBase=u.endsWith('/')?u:u+'/';return r.text();})
+    .then(html=>{
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const files=[...doc.querySelectorAll('a[href]')]
+        .map(a=>decodeURIComponent(a.getAttribute('href')))
+        .filter(h=>/^[^/?#]+\.csv$/i.test(h)).sort();
+      sel.innerHTML=files.length
+        ?files.map(f=>`<option value="${f}">${f}</option>`).join('')
+        :'<option value="">— no CSV files found —</option>';
+    })
+    .catch(e=>{
+      sel.innerHTML='<option value="">— server not available —</option>';
+      if(location.protocol==='file:')st('Serve with: python3 -m http.server');
+      else st('Directory listing unavailable: '+e.message);
+    });
+}
+function fetchSelected(){
+  const sel=document.getElementById('srvsel');
+  const filename=(sel.value||'').trim();
+  if(!filename){st('No file selected.');return;}
+  fetchCSV(filename);
+}
+function fetchCSV(filename){
+  filename=(filename||'').trim();if(!filename)return;
+  const url=_dirBase?_dirBase+filename:filename;
+  st('Fetching '+url+'…');
+  fetch(url)
+    .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+    .then(text=>{
+      const label=filename.replace(/\.[^.]+$/,'');
+      if(!DEVICES[label])DEVICES[label]={};
+      DEVICES[label]._pendingRaw=text;
+      dispatchToWorker(label,text);
+    })
+    .catch(e=>st('Fetch failed: '+e.message));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Device management
+═══════════════════════════════════════════════════════════════ */
 function updateDeviceSelector(){
-  const labels=Object.keys(DEVICES);
+  const labels=Object.keys(DEVICES).filter(l=>DEVICES[l].cols);
   const grp=document.getElementById('devgrp');
   const sel=document.getElementById('devsel');
   grp.style.display=labels.length>1?'flex':'none';
   sel.innerHTML=labels.map(l=>`<option value="${l}"${l===activeDevice?' selected':''}>${l}</option>`).join('');
 }
-
 function activateDevice(label){
-  if(!DEVICES[label]) return;
+  if(!DEVICES[label]||!DEVICES[label].cols) return;
   activeDevice=label;
-  const d=DEVICES[label];
-  RAW=d.raw; DATA=d.data; RAW_TEXT=d.rawText;
+  COLS=DEVICES[label].cols;
+  STATS=DEVICES[label].stats;
+  RAW_TEXT=DEVICES[label].rawText||'';
   currentFile=label;
-  XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
-  XLBL=DATA.map(d=>{
-    if(d.gps_time_str) return d.gps_time_str;
-    const s=String(d.received_at||''); const t=s.slice(11,19);
-    return t.length===8?t:fmtTime(+d.elapsed_s||0);
-  });
   document.getElementById('dlbtn').style.display='flex';
-  document.getElementById('dlraw').style.display='flex';
+  document.getElementById('dlraw').style.display=RAW_TEXT?'flex':'none';
   updateStats();
-  st(`${DATA.length} rows — building…`);
-  setTimeout(()=>{ sizeLayout(); populateMap(); buildAll(); },120);
   updateDeviceSelector();
+  st(STATS.n.toLocaleString()+' rows — building charts…');
+  setTimeout(()=>{sizeLayout();populateMap();buildCharts();},80);
 }
-
 function switchDevice(label){
-  activeDevice=label;
-  activateDevice(label);
-  if(compareMode) drawAllTracks();
+  activeDevice=label;activateDevice(label);
+  if(compareMode)drawAllTracks();
 }
-
 function toggleCompare(){
   compareMode=!compareMode;
   document.getElementById('cmpbtn').style.color=compareMode?'var(--ac2)':'';
-  if(compareMode) drawAllTracks(); else populateMap();
+  if(compareMode)drawAllTracks();else populateMap();
 }
 
-/* Draw all device tracks on the map simultaneously. */
-function drawAllTracks(){
-  if(!mapObj) return;
-  /* Remove old per-device tracks */
-  Object.values(mapTracks).forEach(t=>{ try{mapObj.removeLayer(t);}catch(_){} });
-  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
-  if(mapTrack){ try{mapObj.removeLayer(mapTrack);}catch(_){} mapTrack=null; }
-  if(mapMarker){ try{mapObj.removeLayer(mapMarker);}catch(_){} mapMarker=null; }
-
-  const allBounds=[];
-  Object.entries(DEVICES).forEach(([label,dev])=>{
-    const pts=dev.data
-      .map(d=>[+d.latitude,+d.longitude])
-      .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
-    if(!pts.length) return;
-    const color=deviceColor(label);
-    const poly=L.polyline(pts,{color,weight:2.5,opacity:.85}).addTo(mapObj);
-    poly.bindTooltip(label,{sticky:true});
-    mapTracks[label]=poly;
-    allBounds.push(...pts);
-    /* Start marker */
-    L.circleMarker(pts[0],{radius:4,color,fillColor:color,fillOpacity:1,weight:2})
-      .addTo(mapObj).bindTooltip(label+' start',{direction:'right'});
-  });
-  if(allBounds.length){
-    mapObj.invalidateSize();
-    mapObj.fitBounds(L.latLngBounds(allBounds),{padding:[22,22],maxZoom:16});
-  }
-}
-
-/* Load multiple CSV files at once (from file picker multi-select). */
-function parseMultipleFiles(files){
-  files.forEach(file=>{
-    const label=file.name.replace(/\.[^.]+$/,'');
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const text=ev.target.result;
-      Papa.parse(text,{
-        header:true,dynamicTyping:false,skipEmptyLines:true,
-        complete(r){ if(r.data&&r.data.length>=2) registerDevice(label,r.data,text); },
-        error(e){ st('Parse error ('+label+'): '+e.message); }
-      });
-    };
-    reader.readAsText(file);
-  });
-}
-
-
-const CL={a:'#e8a317',b:'#28bb78',c:'#4a8fec',d:'#d94f4f',e:'#9f6fe0',g:'#8896a8'};
-
-let RAW  = [];   /* original parsed rows from PapaParse */
-let RAW_TEXT = ''; /* original CSV text for raw download  */
-let DATA = [];   /* analytics result rows              */
-let XS   = [], XLBL = [];
-let currentFile = 'analytics';
-const CH = {};
-let CANVAS_H = 120;
-let mapObj, mapTrack, mapMarker, mapTile, mapAllPts=[];
-let isZoomed=false, mapLockedIdx=null;
+/* ═══════════════════════════════════════════════════════════════
+   Param change — re-dispatch to worker
+═══════════════════════════════════════════════════════════════ */
 let _paramTimer=null;
+function onParamChange(){
+  if(!COLS) return;
+  clearTimeout(_paramTimer);
+  _paramTimer=setTimeout(()=>{
+    if(!RAW_TEXT){st('Raw text not available for re-analysis.');return;}
+    if(!DEVICES[activeDevice])DEVICES[activeDevice]={};
+    DEVICES[activeDevice]._pendingRaw=RAW_TEXT;
+    dispatchToWorker(activeDevice,RAW_TEXT);
+  },400);
+}
 
-/* Live mode state */
-let liveTimer      = null;   /* setInterval handle, null = not live       */
-let liveAutoFollow = true;   /* scroll slider to latest row automatically */
+/* ═══════════════════════════════════════════════════════════════
+   Stats — header chips
+═══════════════════════════════════════════════════════════════ */
+function updateStats(){
+  if(!STATS)return;
+  const s=STATS;
+  const n=s.n;
+  document.getElementById('cr').innerHTML=`<b>${n.toLocaleString()}</b> rows`;
+  document.getElementById('cd').innerHTML=`dur <b>${fmtTime(s.duration_s)}</b>`;
+  document.getElementById('ck').innerHTML=`dist <b>${(s.distance_m/1000).toFixed(2)} km</b>`;
+  document.getElementById('ca').innerHTML=`Δalt <b>${s.delta_alt_m>=0?'+':''}${s.delta_alt_m.toFixed(0)} m</b>`;
+  document.getElementById('cs').innerHTML=`max <b>${s.max_speed_ms.toFixed(1)} m/s</b>`;
+  const sl=document.getElementById('tls');sl.max=n-1;sl.value=0;
+  document.getElementById('tdisp').textContent=getLabel(0);
+}
 
-/* Maps each chart canvas id → ordered array of DATA column keys.
-   Used by liveRefresh() to update dataset arrays in-place without
-   destroying and recreating the Chart.js instances. Order must match
-   the dataset order in buildAll(). */
-const CHART_SPECS={
-  'c-spd' :['speed_ms','speed_ms_smooth'],
-  'c-brg' :['gps_bearing_deg'],
-  'c-facc':['fwd_accel_ms2','fwd_accel_smooth'],
-  'c-lacc':['lat_accel_ms2'],
-  'c-alt' :['altitude_m','alt_change_smooth_m'],
-  'c-dst' :['distance_m'],
-  'c-vib' :['vibration_ms2'],
-  'c-hacc':['gps_h_accuracy_m','gps_v_accuracy_m'],
+/* ═══════════════════════════════════════════════════════════════
+   Label helper — derives HH:MM:SS from typed-array timestamps
+═══════════════════════════════════════════════════════════════ */
+function getLabel(i){
+  if(!COLS)return'0:00';
+  const gMs=COLS.gps_time_ms[i];
+  if(isFinite(gMs)&&gMs>0)return new Date(gMs).toTimeString().slice(0,8);
+  const rMs=COLS.received_at_ms[i];
+  if(isFinite(rMs))return new Date(rMs).toTimeString().slice(0,8);
+  return fmtTime(COLS.elapsed_s[i]||0);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   uPlot chart building
+═══════════════════════════════════════════════════════════════ */
+
+/* Chart specs: containerId → { keys: column names, series: uPlot series defs } */
+const CHART_DEFS={
+  'c-spd':{
+    keys:['speed_ms','speed_ms_smooth'],
+    series:[
+      {label:'GPS speed',stroke:'rgba(232,163,23,.55)',width:1,points:{show:false}},
+      {label:'Smoothed', stroke:'#28bb78',            width:1.5,points:{show:false}},
+    ]
+  },
+  'c-brg':{
+    keys:['gps_bearing_deg'],
+    series:[{label:'Bearing (°)',stroke:'#4a8fec',width:1,points:{show:false}}]
+  },
+  'c-facc':{
+    keys:['fwd_accel_ms2','fwd_accel_smooth'],
+    series:[
+      {label:'Raw',     stroke:'rgba(136,150,168,.6)',width:1,  points:{show:false}},
+      {label:'Smoothed',stroke:'#e8a317',             width:1.5,points:{show:false}},
+    ]
+  },
+  'c-lacc':{
+    keys:['lat_accel_ms2'],
+    series:[{label:'Lateral (m/s²)',stroke:'#4a8fec',width:1,points:{show:false},
+      fill:'rgba(74,143,236,.07)'}]
+  },
+  'c-alt':{
+    keys:['altitude_m','alt_change_smooth_m'],
+    series:[
+      {label:'Altitude (m)',      stroke:'#e8a317',width:1.5,points:{show:false},
+        fill:'rgba(232,163,23,.06)'},
+      {label:'Δalt/step smooth',  stroke:'#28bb78',width:1,  points:{show:false},
+        scale:'dalt'},
+    ]
+  },
+  'c-dst':{
+    keys:['distance_m'],
+    series:[{label:'Distance (m)',stroke:'#e8a317',width:1.5,points:{show:false},
+      fill:'rgba(232,163,23,.07)'}]
+  },
+  'c-vib':{
+    keys:['vibration_ms2'],
+    series:[{label:'IMU load (m/s²)',stroke:'#9f6fe0',width:1,points:{show:false},
+      fill:'rgba(159,111,224,.07)'}]
+  },
+  'c-hacc':{
+    keys:['gps_h_accuracy_m','gps_v_accuracy_m'],
+    series:[
+      {label:'H-acc (m)',stroke:'#d94f4f',width:1,points:{show:false}},
+      {label:'V-acc (m)',stroke:'#4a8fec',width:1,points:{show:false}},
+    ]
+  },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   Utilities
-═══════════════════════════════════════════════════════════════ */
-const st  = m=>{ document.getElementById('stmsg').textContent=m; };
-const fmt = (v,d=2)=>(v==null||!isFinite(+v))?'—':(+v).toFixed(d);
-const hexA= (h,a)=>
-  `rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${a})`;
-
-function fmtTime(s){
-  s=Math.round(+s||0);
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
-  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
-            :`${m}:${String(ss).padStart(2,'0')}`;
+function tc(){
+  return document.documentElement.dataset.theme==='dark'
+    ?{grid:'#1c2028',tick:'#3e4756',leg:'#5c6474'}
+    :{grid:'#e6e9ef',tick:'#8996a8',leg:'#6b7585'};
 }
 
-function col(key){
+function getClampedCol(key){
+  if(!COLS)return null;
+  const src=COLS[key];if(!src)return null;
   const lim=CLAMP[key];
-  return DATA.map(d=>{
-    const v=d[key];
-    if(v==null) return null;
-    const n=+v;
-    if(!isFinite(n)) return null;
-    if(lim&&(n<lim[0]||n>lim[1])) return null;
-    return n;
+  if(!lim)return src;
+  const out=new Float32Array(src.length);
+  for(let i=0;i<src.length;i++){
+    const v=src[i];out[i]=(isFinite(v)&&v>=lim[0]&&v<=lim[1])?v:NaN;
+  }
+  return out;
+}
+
+function makeChart(id,def){
+  const container=document.getElementById(id);
+  if(!container||!COLS) return;
+
+  /* Destroy existing instance */
+  if(plots[id]){plots[id].destroy();delete plots[id];}
+  while(container.firstChild)container.removeChild(container.firstChild);
+
+  const t=tc();
+  const w=computeCanvasW();
+  const n=COLS.elapsed_s.length;
+
+  /* Build data arrays — x + one per key */
+  const data=[COLS.elapsed_s,...def.keys.map(k=>getClampedCol(k))];
+
+  /* Scales: most charts just need x+y; c-alt has a secondary scale for delta-alt */
+  const scales={
+    x:{time:false},
+    y:{auto:true}
+  };
+  if(id==='c-alt') scales.dalt={auto:true};
+
+  /* Axes */
+  const axes=[
+    {/* x */
+      stroke:t.tick,grid:{stroke:t.grid,width:0.5},ticks:{stroke:t.tick,width:0.5},
+      values:(u,vals)=>vals.map(v=>fmtTime(v)),
+      size:28,
+    },
+    {/* y */
+      stroke:t.tick,grid:{stroke:t.grid,width:0.5},ticks:{stroke:t.tick,width:0.5},
+      size:56,
+    }
+  ];
+  if(id==='c-alt'){
+    axes.push({/* secondary y for Δalt */
+      scale:'dalt',side:1,
+      stroke:'#28bb78',grid:{show:false},ticks:{stroke:'#28bb78',width:0.5},
+      size:52,
+    });
+  }
+
+  const opts={
+    width:w, height:CANVAS_H,
+    padding:[4,id==='c-alt'?60:16,0,0],
+    cursor:{
+      sync:{key:CURSOR_SYNC.key},
+      drag:{x:true,y:false,setScale:true},
+      focus:{prox:30},
+    },
+    scales,axes,
+    series:[
+      {},/* x-series placeholder */
+      ...def.series
+    ],
+    legend:{show:def.series.length>1},
+    hooks:{
+      setScale:[(u,key)=>{if(key==='x')onZoom(u);}],
+      setCursor:[(u)=>onCursor(u)],
+    },
+    plugins:[scrubberPlugin()],
+  };
+
+  const u=new uPlot(opts,data,container);
+  plots[id]=u;
+  return u;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Build / rebuild charts
+═══════════════════════════════════════════════════════════════ */
+function buildCharts(){
+  scrubberIdx=null;
+  Object.entries(CHART_DEFS).forEach(([id,def])=>makeChart(id,def));
+  st(STATS.n.toLocaleString()+' rows · '+Object.keys(plots).length+' charts · uPlot');
+  updInsp(0);
+}
+
+/* Called after a worker re-analysis triggered by onParamChange().
+   Uses uPlot's setData() to swap arrays in-place — avoids the full
+   destroy/recreate cycle and keeps the current zoom window intact. */
+function rebuildCharts(){
+  if(!COLS)return;
+  Object.entries(CHART_DEFS).forEach(([id,def])=>{
+    const u=plots[id];
+    if(!u){makeChart(id,def);return;}
+    /* setData is fast — avoids full destroy/recreate */
+    const data=[COLS.elapsed_s,...def.keys.map(k=>getClampedCol(k))];
+    u.setData(data,true);
+  });
+  populateMap();
+  updateStats();
+  updInsp(scrubberIdx||0);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Cursor interaction
+═══════════════════════════════════════════════════════════════ */
+function onCursor(u){
+  const idx=u.cursor.idx;
+  if(idx==null||!COLS)return;
+  /* Don't thrash during live auto-follow */
+  scrubberIdx=idx;
+  document.getElementById('tls').value=idx;
+  document.getElementById('tdisp').textContent=getLabel(idx);
+  updMap(idx);
+  updInsp(idx);
+}
+
+/* Update the map polyline to show only fixes within [minS, maxS] elapsed
+   seconds, then re-fit the map bounds to that subset.  Called from onZoom
+   and resetZoom so the map always reflects the current chart x-window. */
+function zoomMap(minS, maxS){
+  if(!mapObj||!mapTrack||compareMode)return;
+  const pts=decimateGPS(minS,maxS);
+  if(!pts.length)return;
+  const latLngs=pts.map(p=>[p[0],p[1]]);
+  mapTrack.setLatLngs(latLngs);
+  mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
+}
+
+function onZoom(source){
+  /* _zoomLock prevents re-entrant cascades: when we call setScale on a
+     peer chart it fires its own setScale hook, which would call onZoom
+     again.  The lock breaks the cycle. */
+  if(_zoomLock)return;
+  _zoomLock=true;
+  const {min,max}=source.scales.x;
+  Object.values(plots).forEach(u=>{
+    if(u!==source)u.setScale('x',{min,max});
+  });
+  _zoomLock=false;
+  _isZoomed=true;
+  document.getElementById('rzoom').classList.add('vis');
+  zoomMap(min,max);
+}
+
+function resetZoom(){
+  if(!COLS)return;
+  const min=COLS.elapsed_s[0];
+  const max=COLS.elapsed_s[COLS.elapsed_s.length-1];
+  Object.values(plots).forEach(u=>u.setScale('x',{min,max}));
+  _isZoomed=false;
+  document.getElementById('rzoom').classList.remove('vis');
+  /* Restore full track on the map */
+  zoomMap(min,max);
+}
+
+/* goToIdx: driven by slider.  Updates scrubber line on all charts + map + inspector. */
+function goToIdx(idx,fromMap=false,fromLive=false){
+  if(!COLS||idx<0||idx>=COLS.elapsed_s.length)return;
+  /* If the user manually moves the cursor (not triggered by live auto-follow
+     and not triggered by a map click that originated from live), stop
+     auto-scrolling to the tail so they can inspect historical data. */
+  if(liveTimer&&!fromLive&&!fromMap)liveAutoFollow=false;
+  scrubberIdx=idx;
+  /* Redraw all charts to reposition the scrubber dashed line */
+  Object.values(plots).forEach(u=>u.redraw(false,true));
+  document.getElementById('tls').value=idx;
+  document.getElementById('tdisp').textContent=getLabel(idx);
+  updMap(idx);
+  updInsp(idx);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Theme
+═══════════════════════════════════════════════════════════════ */
+function toggleTheme(){
+  document.documentElement.dataset.theme=
+    document.documentElement.dataset.theme==='dark'?'light':'dark';
+  applyThemeCharts();swapTile();
+}
+function applyThemeCharts(){
+  const t=tc();
+  Object.values(plots).forEach(u=>{
+    u.axes[0].stroke=t.tick; u.axes[0].grid.stroke=t.grid;
+    u.axes[1].stroke=t.tick; u.axes[1].grid.stroke=t.grid;
+    u.redraw(false,true);
   });
 }
+function swapTile(){
+  if(!mapObj)return;
+  const dark=document.documentElement.dataset.theme==='dark';
+  if(mapTile)mapObj.removeLayer(mapTile);
+  mapTile=L.tileLayer(
+    dark?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        :'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    {maxZoom:19,attribution:''}
+  ).addTo(mapObj);
+}
 
 /* ═══════════════════════════════════════════════════════════════
-   Layout sizing
+   Map  — GPS track decimated to MAX_MAP_PTS for Leaflet
+   Leaflet stores every polyline vertex as a Leaflet LatLng object
+   and redraws them all on every pan/zoom.  Feeding it 5 M points
+   causes the same OOM as Chart.js did.  We stride the valid-fix
+   array down to at most MAX_MAP_PTS before handing it to Leaflet.
+   Map clicks still search the full typed-array column to find the
+   nearest data row, so precision is not lost.
 ═══════════════════════════════════════════════════════════════ */
-function computeCanvasW(){
-  /* On mobile #cpages is position:static so clientWidth can read as 0
-     during initial layout. Use the viewport width directly instead. */
-  if(isMobile()) return Math.max(100, window.innerWidth - 40);
-  return Math.max(100,document.getElementById('cpages').clientWidth-40);
+const MAX_MAP_PTS=50000;
+let mapObj,mapTrack,mapMarker,mapTile,mapAllPts=[];
+
+function decimateGPS(minS, maxS){
+  /* minS / maxS are optional elapsed_s bounds; when supplied only fixes
+     within that time window are included — used to sync the map to a
+     chart zoom selection. */
+  if(!COLS)return[];
+  const n=COLS.latitude.length;
+  const raw=[];
+  const useRange=(minS!=null&&maxS!=null);
+  for(let i=0;i<n;i++){
+    const la=COLS.latitude[i],lo=COLS.longitude[i];
+    if(!isFinite(la)||isNaN(la)||!isFinite(lo)||isNaN(lo))continue;
+    if(useRange){const s=COLS.elapsed_s[i];if(s<minS||s>maxS)continue;}
+    raw.push([la,lo,i]);
+  }
+  if(raw.length<=MAX_MAP_PTS)return raw;
+  const stride=Math.ceil(raw.length/MAX_MAP_PTS);
+  return raw.filter((_,k)=>k%stride===0);
 }
-function isMobile(){ return window.innerWidth<=700; }
-function toggleMap(){
-  const lp = document.getElementById('lp');
-  lp.classList.toggle('open');
-  if(lp.classList.contains('open')){
-    // Give the DOM a tick to paint before invalidating the map tile layer
-    setTimeout(()=>{
-      if(mapObj){ sizeLayout(); mapObj.invalidateSize(); }
-    }, 50);
+
+function populateMap(){
+  if(compareMode){drawAllTracks();return;}
+  const pts=decimateGPS();
+  mapAllPts=pts.map(p=>[p[0],p[1]]);
+  if(!mapAllPts.length)return;
+
+  /* Remove all compare tracks and the single-device track */
+  Object.values(mapTracks).forEach(t=>{try{mapObj.removeLayer(t);}catch(_){}});
+  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
+  if(mapTrack)mapObj.removeLayer(mapTrack);
+  if(mapMarker)mapObj.removeLayer(mapMarker);
+
+  const trackColor=activeDevice?deviceColor(activeDevice):'#e8a317';
+  mapTrack=L.polyline(mapAllPts,{color:trackColor,weight:2.5,opacity:.85}).addTo(mapObj);
+  mapTrack.on('click',function(e){
+    /* Find nearest data row to click — search full column, not decimated pts */
+    const clat=e.latlng.lat,clon=e.latlng.lng;
+    let best=0,bestD=Infinity;
+    const lat=COLS.latitude,lon=COLS.longitude,n=lat.length;
+    for(let i=0;i<n;i++){
+      if(isNaN(lat[i]))continue;
+      const d=(lat[i]-clat)**2+(lon[i]-clon)**2;
+      if(d<bestD){bestD=d;best=i;}
+    }
+    goToIdx(best,true);
+  });
+  mapObj.invalidateSize();
+  mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
+  setTimeout(()=>{mapObj.invalidateSize();mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});},500);
+  L.circleMarker(mapAllPts[0],{radius:5,color:'#28bb78',fillColor:'#28bb78',fillOpacity:1,weight:2})
+    .addTo(mapObj).bindTooltip('Start',{direction:'right'});
+  mapMarker=L.marker(mapAllPts[0],{icon:L.divIcon({
+    className:'',
+    html:`<div style="width:10px;height:10px;border-radius:50%;background:${trackColor};border:2px solid var(--bg);box-shadow:0 0 7px ${trackColor}bb"></div>`,
+    iconSize:[10,10],iconAnchor:[5,5]
+  })}).addTo(mapObj);
+
+  const excess=COLS.latitude.length-mapAllPts.length;
+  if(excess>0)st(STATS.n.toLocaleString()+` rows · map track decimated to ${mapAllPts.length.toLocaleString()} pts`);
+}
+
+function updMap(idx){
+  if(!mapMarker||!COLS)return;
+  const la=COLS.latitude[idx],lo=COLS.longitude[idx];
+  if(isFinite(la)&&isFinite(lo)&&!isNaN(la)&&!isNaN(lo))mapMarker.setLatLng([la,lo]);
+}
+
+/* Draw all device tracks on the map simultaneously — compare mode. */
+function drawAllTracks(){
+  if(!mapObj)return;
+  Object.values(mapTracks).forEach(t=>{try{mapObj.removeLayer(t);}catch(_){}});
+  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
+  if(mapTrack){try{mapObj.removeLayer(mapTrack);}catch(_){}mapTrack=null;}
+  if(mapMarker){try{mapObj.removeLayer(mapMarker);}catch(_){}mapMarker=null;}
+  const allBounds=[];
+  Object.entries(DEVICES).forEach(([label,dev])=>{
+    if(!dev.cols)return;
+    const c=dev.cols;
+    const n=c.latitude.length;
+    const pts=[];
+    for(let i=0;i<n;i++){if(isFinite(c.latitude[i])&&!isNaN(c.latitude[i]))pts.push([c.latitude[i],c.longitude[i],i]);}
+    if(!pts.length)return;
+    const stride=Math.max(1,Math.ceil(pts.length/MAX_MAP_PTS));
+    const dPts=pts.filter((_,k)=>k%stride===0).map(p=>[p[0],p[1]]);
+    const color=deviceColor(label);
+    const poly=L.polyline(dPts,{color,weight:2.5,opacity:.85}).addTo(mapObj);
+    poly.bindTooltip(label,{sticky:true});
+    mapTracks[label]=poly;allBounds.push(...dPts);
+    L.circleMarker(dPts[0],{radius:4,color,fillColor:color,fillOpacity:1,weight:2}).addTo(mapObj).bindTooltip(label+' start',{direction:'right'});
+  });
+  if(allBounds.length){mapObj.invalidateSize();mapObj.fitBounds(L.latLngBounds(allBounds),{padding:[22,22],maxZoom:16});}
+}
+
+/* Extend the map track polyline and move the position marker without
+   re-fitting bounds (which would be jarring during a live session). */
+function liveUpdateMap(){
+  if(!mapObj||!COLS)return;
+  const pts=decimateGPS();const newPts=pts.map(p=>[p[0],p[1]]);
+  if(!newPts.length)return;
+  if(!mapTrack){populateMap();return;}
+  mapTrack.setLatLngs(newPts);
+  if(mapMarker){
+    const latest=newPts[newPts.length-1];
+    mapMarker.setLatLng(latest);
+    if(liveAutoFollow)mapObj.panTo(latest,{animate:true,duration:0.5});
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Inspector
+═══════════════════════════════════════════════════════════════ */
+const row=(l,v,c='')=>`<div class="ir"><span class="il">${l}</span><span class="iv ${c}">${v}</span></div>`;
+
+function updInsp(idx){
+  if(!COLS||idx==null)return;
+  const C=COLS,g=v=>isFinite(v)&&!isNaN(v);
+  const fmt=(v,d=2)=>g(v)?v.toFixed(d):'—';
+  const devLabel=activeDevice
+    ?`<div class="ig"><div class="igt">Device</div>
+       <div class="ir"><span class="il">ID / IP</span>
+         <span class="iv" style="color:${deviceColor(activeDevice)}">${activeDevice}</span></div>
+     </div>`:'';
+  const recAt=new Date(C.received_at_ms[idx]).toTimeString().slice(0,8);
+  const gpsTStr=g(C.gps_time_ms[idx])&&C.gps_time_ms[idx]>0?new Date(C.gps_time_ms[idx]).toTimeString().slice(0,8):null;
+  document.getElementById('ic').innerHTML=devLabel+`
+    <div class="ig"><div class="igt">Time</div>
+      ${row('Timestamp',recAt)}
+      ${gpsTStr?row('GPS time',gpsTStr,'a2'):''}
+      ${row('Elapsed',fmtTime(C.elapsed_s[idx]),'a1')}
+      ${row('Δt',fmt(C.dt_s[idx],2)+' s')}
+      ${row('GPS fix',C.gps_fix_valid[idx]?'<span class="a2">✓</span>':'<span class="a4">✗</span>')}
+    </div>
+    <div class="ig"><div class="igt">Velocity</div>
+      ${row('Speed',         fmt(C.speed_ms[idx],2)+' m/s','a1')}
+      ${row('Speed (smooth)',fmt(C.speed_ms_smooth[idx],2)+' m/s','a2')}
+      ${row('Bearing',       fmt(C.gps_bearing_deg[idx],1)+'°')}
+    </div>
+    <div class="ig"><div class="igt">Acceleration</div>
+      ${row('Forward raw',   fmt(C.fwd_accel_ms2[idx],3)+' m/s²','a3')}
+      ${row('Forward smooth',fmt(C.fwd_accel_smooth[idx],3)+' m/s²','a1')}
+      ${row('Lateral',       fmt(C.lat_accel_ms2[idx],3)+' m/s²','a3')}
+    </div>
+    <div class="ig"><div class="igt">Position</div>
+      ${row('Distance',      fmt((C.distance_m[idx]||0)/1000,3)+' km','a1')}
+      ${row('Altitude',      fmt(C.altitude_m[idx],1)+' m','a1')}
+      ${row('Δalt/step',     fmt(C.alt_change_m[idx],1)+' m')}
+      ${row('Δalt/step smth',fmt(C.alt_change_smooth_m[idx],1)+' m','a2')}
+      ${row('Lat',           fmt(C.latitude[idx],6))}
+      ${row('Lon',           fmt(C.longitude[idx],6))}
+    </div>
+    <div class="ig"><div class="igt">Quality</div>
+      ${row('IMU load',    fmt(C.vibration_ms2[idx],3)+' m/s²','a5')}
+      ${row('H-accuracy',  fmt(C.gps_h_accuracy_m[idx],1)+' m')}
+      ${row('V-accuracy',  fmt(C.gps_v_accuracy_m[idx],1)+' m')}
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tabs
+═══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
+    document.querySelectorAll('.cp').forEach(p=>p.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('p-'+btn.dataset.p).classList.add('on');
+    if(COLS){
+      requestAnimationFrame(()=>{
+        const w=computeCanvasW();
+        Object.values(plots).forEach(u=>u.setSize({width:w,height:CANVAS_H}));
+        if(_isZoomed){const src=Object.values(plots)[0];if(src)onZoom(src);}
+      });
+    }
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Timeline slider
+═══════════════════════════════════════════════════════════════ */
+document.getElementById('tls').addEventListener('input',e=>{
+  if(liveTimer)liveAutoFollow=false;
+  goToIdx(+e.target.value);
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Download CSV
+   Column order matches analytics.py output exactly.
+═══════════════════════════════════════════════════════════════ */
+const CSV_COLS=[
+  'received_at','gps_time_str','elapsed_s','dt_s','gps_fix_valid',
+  'speed_ms','speed_ms_smooth','fwd_accel_ms2','fwd_accel_smooth','lat_accel_ms2',
+  'distance_m','altitude_m','alt_change_m','alt_change_smooth_m','vibration_ms2',
+  'latitude','longitude','gps_bearing_deg','gps_h_accuracy_m','gps_v_accuracy_m',
+];
+
+function downloadCSV(){
+  if(!COLS)return;
+  st('Building CSV…');
+  /* Use a setTimeout so the status message renders before the blocking loop */
+  setTimeout(()=>{
+    const C=COLS,n=C.elapsed_s.length;
+    const fmt=(v,d)=>isFinite(v)&&!isNaN(v)?v.toFixed(d):'';
+    const lines=[CSV_COLS.join(',')];
+    for(let i=0;i<n;i++){
+      const rAt=new Date(C.received_at_ms[i]).toISOString().replace('T',' ').slice(0,23);
+      const gMs=C.gps_time_ms[i];
+      const gStr=(isFinite(gMs)&&gMs>0)?new Date(gMs).toTimeString().slice(0,8):'';
+      lines.push([
+        rAt,gStr,fmt(C.elapsed_s[i],3),fmt(C.dt_s[i],3),C.gps_fix_valid[i],
+        fmt(C.speed_ms[i],6),fmt(C.speed_ms_smooth[i],6),
+        fmt(C.fwd_accel_ms2[i],6),fmt(C.fwd_accel_smooth[i],6),fmt(C.lat_accel_ms2[i],6),
+        fmt(C.distance_m[i],3),fmt(C.altitude_m[i],3),fmt(C.alt_change_m[i],3),fmt(C.alt_change_smooth_m[i],3),
+        fmt(C.vibration_ms2[i],6),
+        fmt(C.latitude[i],6),fmt(C.longitude[i],6),fmt(C.gps_bearing_deg[i],3),
+        fmt(C.gps_h_accuracy_m[i],3),fmt(C.gps_v_accuracy_m[i],3),
+      ].join(','));
+    }
+    const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='analytics_'+currentFile+'.csv';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    st(n.toLocaleString()+' rows exported');
+  },20);
+}
+
+function downloadRaw(){
+  if(!RAW_TEXT)return;
+  const blob=new Blob([RAW_TEXT],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=currentFile+'.csv';document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(a.href);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Live mode
+   Polls the currently-selected server file every LIVE_INTERVAL ms,
+   re-dispatches to the worker, and refreshes chart data in-place
+   without destroying and recreating the uPlot instances.
+═══════════════════════════════════════════════════════════════ */
+let liveTimer=null;         /* setInterval handle, null = not live      */
+let liveAutoFollow=true;    /* scroll slider to latest row automatically */
+let LIVE_INTERVAL=5000;     /* ms — updated by interval selector         */
+let _liveFilename='';
+
+function toggleLive(){
+  if(liveTimer){stopLive();return;}
+  const sel=document.getElementById('srvsel');
+  const filename=(sel.value||'').trim();
+  if(!filename||!_dirBase){st('Select a server file first.');return;}
+  startLive(filename);
+}
+function startLive(filename){
+  liveAutoFollow=true;_liveFilename=filename;
+  const btn=document.getElementById('livebtn');
+  btn.classList.add('live');btn.innerHTML='<span class="live-dot"></span>Live';
+  document.getElementById('srvbtn').disabled=true;
+  livePoll();liveTimer=setInterval(livePoll,LIVE_INTERVAL);
+}
+function stopLive(){
+  if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+  _liveFilename='';
+  const btn=document.getElementById('livebtn');
+  btn.classList.remove('live');btn.innerHTML='Live';
+  document.getElementById('srvbtn').disabled=false;
+  st(STATS?STATS.n.toLocaleString()+' rows · live stopped':'');
+}
+function onLiveIntervalChange(val){
+  LIVE_INTERVAL=parseInt(val)||5000;
+  if(liveTimer){clearInterval(liveTimer);livePoll();liveTimer=setInterval(livePoll,LIVE_INTERVAL);}
+}
+
+function livePoll(){
+  /* Skip if a previous poll's worker is still running — avoids queuing
+     multiple overlapping analyses when the file is very large. */
+  if(!_liveFilename||!_dirBase||_workerBusy)return;
+  const url=_dirBase+_liveFilename;
+  fetch(url,{cache:'no-store'})
+    .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+    .then(text=>{
+      if(!DEVICES[_liveFilename])DEVICES[_liveFilename]={};
+      DEVICES[_liveFilename]._pendingRaw=text;
+      /* Set flag so onWorkerMessage uses the live in-place refresh path
+         rather than the full activateDevice rebuild path. */
+      _liveMode=true;
+      dispatchToWorker(_liveFilename,text);
+    })
+    .catch(e=>st('Live poll error: '+e.message));
+}
+
+let _liveMode=false;
+
+function liveRefreshCharts(){
+  if(!COLS)return;
+  const n=COLS.elapsed_s.length;
+  const chartsExist=Object.keys(plots).length>0;
+  if(!chartsExist){
+    /* First successful poll — full initialisation. */
+    sizeLayout();populateMap();buildCharts();
+    updateStats();
+    return;
+  }
+  /* In-place update via setData — avoids destroy/recreate flicker even
+     at millions of points, since uPlot only redraws the canvas pixels. */
+  Object.entries(CHART_DEFS).forEach(([id,def])=>{
+    const u=plots[id];if(!u)return;
+    const data=[COLS.elapsed_s,...def.keys.map(k=>getClampedCol(k))];
+    u.setData(data,false);
+  });
+  updateStats();
+  /* Extend slider range; auto-scroll to tail if the user hasn't
+     manually positioned the cursor. */
+  const sl=document.getElementById('tls');sl.max=n-1;
+  if(liveAutoFollow)goToIdx(n-1,false,true);
+  liveUpdateMap();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Layout
+═══════════════════════════════════════════════════════════════ */
+function computeCanvasW(){
+  if(isMobile())return Math.max(100,window.innerWidth-40);
+  return Math.max(100,document.getElementById('cpages').clientWidth-40);
+}
+function isMobile(){return window.innerWidth<=700;}
+function toggleMap(){
+  const lp=document.getElementById('lp');
+  lp.classList.toggle('open');
+  if(lp.classList.contains('open'))setTimeout(()=>{if(mapObj){sizeLayout();mapObj.invalidateSize();}},50);
+}
 function sizeLayout(){
-  const HDR = document.getElementById('hdr').getBoundingClientRect().height;
+  const HDR=document.getElementById('hdr').getBoundingClientRect().height;
   const TLB=document.getElementById('tlb').offsetHeight||34;
   const TABS=document.getElementById('tabs').offsetHeight||33;
   if(isMobile()){
@@ -862,756 +1484,66 @@ function sizeLayout(){
     document.getElementById('mapw').style.height=mapH+'px';
     CANVAS_H=Math.max(60,Math.floor((cpH-27)/2)-22-14);
   }
+  if(Object.keys(plots).length){
+    const w=computeCanvasW();
+    Object.values(plots).forEach(u=>u.setSize({width:w,height:CANVAS_H}));
+  }
   return CANVAS_H;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Theme
+   Utilities
 ═══════════════════════════════════════════════════════════════ */
-function toggleTheme(){
-  document.documentElement.dataset.theme=
-    document.documentElement.dataset.theme==='dark'?'light':'dark';
-  applyThemeCharts(); swapTile();
-}
-function tc(){
-  return document.documentElement.dataset.theme==='dark'
-    ?{grid:'#1c2028',tick:'#3e4756',leg:'#5c6474'}
-    :{grid:'#e6e9ef',tick:'#8996a8',leg:'#6b7585'};
-}
-function applyThemeCharts(){
-  const t=tc();
-  Object.values(CH).forEach(ch=>{
-    Object.keys(ch.options.scales).forEach(ax=>{
-      if(ch.options.scales[ax].grid)  ch.options.scales[ax].grid.color =t.grid;
-      if(ch.options.scales[ax].ticks) ch.options.scales[ax].ticks.color=t.tick;
-    });
-    ch.options.plugins.legend.labels.color=t.leg;
-    ch.update('none');
-  });
-}
-function swapTile(){
-  if(!mapObj) return;
-  const dark=document.documentElement.dataset.theme==='dark';
-  if(mapTile) mapObj.removeLayer(mapTile);
-  mapTile=L.tileLayer(
-    dark?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        :'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    {maxZoom:19,attribution:''}
-  ).addTo(mapObj);
-  if(mapTrack) mapTrack.bringToFront();
+const st=m=>{document.getElementById('stmsg').textContent=m;};
+function fmtTime(s){
+  s=Math.round(+s||0);
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+            :`${m}:${String(ss).padStart(2,'0')}`;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   File loading — file picker + drag-and-drop
-═══════════════════════════════════════════════════════════════ */
-document.getElementById('fi').addEventListener('change',e=>{
-  const files=[...e.target.files];
-  if(files.length===1){ parseCSVFile(files[0]); }
-  else if(files.length>1){ parseMultipleFiles(files); }
-  e.target.value='';
-});
-function onDrop(e){
-  e.preventDefault();
-  const f=e.dataTransfer.files[0];
-  if(f&&f.name.endsWith('.csv')) parseCSVFile(f);
-}
-
-function parseCSVFile(file){
-  currentFile=file.name.replace(/\.[^.]+$/,'');
-  st('Parsing…');
-  const reader=new FileReader();
-  reader.onload=ev=>{
-    const text=ev.target.result;
-    RAW_TEXT=text;
-    Papa.parse(text,{
-      header:true,dynamicTyping:false,skipEmptyLines:true,
-      complete(r){ registerDevice(currentFile, r.data, text); },
-      error(e){ st('Parse error: '+e.message); }
-    });
-  };
-  reader.readAsText(file);
-}
-
-/* ── Server file list ────────────────────────────────────────── */
-/* _dirBase is updated from response.url after the listing fetch
-   completes so it reflects the final URL after any server-side
-   redirects (e.g. trailing-slash normalisation by http.server).
-   File fetches are then constructed relative to that same URL.  */
-let _dirBase = '';
-
-function loadFileList(){
-  const sel=document.getElementById('srvsel');
-  sel.innerHTML='<option value="">Loading…</option>';
-  fetch('logs/')
-    .then(r=>{
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      /* Normalise: always end with / so _dirBase + filename is a valid URL.
-         Apache2 does not always redirect bare directory requests to add a
-         trailing slash (depends on DirectorySlash config), so we enforce it
-         here rather than relying on server behaviour. */
-      const u=r.url;
-      _dirBase = u.endsWith('/') ? u : u + '/';
-      return r.text();
-    })
-    .then(html=>{
-      const doc=new DOMParser().parseFromString(html,'text/html');
-      const files=[...doc.querySelectorAll('a[href]')]
-        .map(a=>decodeURIComponent(a.getAttribute('href')))
-        .filter(h=>/^[^/?#]+\.csv$/i.test(h))
-        .sort();
-      sel.innerHTML=files.length
-        ? files.map(f=>`<option value="${f}">${f}</option>`).join('')
-        : '<option value="">— no CSV files found —</option>';
-    })
-    .catch(e=>{
-      sel.innerHTML='<option value="">— server not available —</option>';
-      if(location.protocol==='file:')
-        st('Serve with: python3 -m http.server');
-      else
-        st('Directory listing unavailable: '+e.message);
-    });
-}
-
-function fetchSelected(){
-  const sel=document.getElementById('srvsel');
-  const filename=(sel.value||'').trim();
-  if(!filename){ st('No file selected.'); return; }
-  fetchCSV(filename);
-}
-
-/* ── File loading — fetch from server ───────────────────────── */
-function fetchCSV(filename){
-  filename=(filename||'').trim();
-  if(!filename) return;
-  /* Build the URL relative to where the directory listing was actually
-     served from (post-redirect).  Bare string concatenation is used
-     intentionally — new URL() would re-encode already-decoded names. */
-  const url=_dirBase ? _dirBase+filename : filename;
-  st('Fetching '+url+'…');
-  fetch(url)
-    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status+' — '+url); return r.text(); })
-    .then(text=>{
-      RAW_TEXT=text;
-      const label=filename.replace(/\.[^.]+$/,'');
-      Papa.parse(text,{
-        header:true,dynamicTyping:false,skipEmptyLines:true,
-        complete(r){ registerDevice(label, r.data, text); },
-        error(e){ st('Parse error: '+e.message); }
-      });
-    })
-    .catch(e=>{ st('Fetch failed: '+e.message); });
-}
-
-/* ── Core: run analytics then rebuild ───────────────────────── */
-/* Called by onParamChange() to re-analyse the active device. */
-function processRaw(rawRows){
-  if(!rawRows||rawRows.length<2){ st('Too few rows.'); return; }
-  RAW=rawRows;
-  const sgW =parseInt(document.getElementById('psg').value)||5;
-  const accW=parseInt(document.getElementById('pacc').value)||20;
-  const altW=parseInt(document.getElementById('palt').value)||5;
-  try{
-    DATA=analyse(RAW, sgW, altW, accW);
-  } catch(e){
-    st('Analytics error: '+e.message);
-    return;
-  }
-  /* Update the stored analysed data for the active device. */
-  if(activeDevice&&DEVICES[activeDevice]) DEVICES[activeDevice].data=DATA;
-  XS  =DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
-  XLBL=DATA.map(d=>{
-    if(d.gps_time_str) return d.gps_time_str;
-    const s=String(d.received_at||'');
-    const t=s.slice(11,19);
-    return t.length===8?t:fmtTime(+d.elapsed_s||0);
-  });
-  document.getElementById('dlbtn').style.display='flex';
-  document.getElementById('dlraw').style.display='flex';
-  updateStats();
-  st(`${DATA.length} rows — building…`);
-  setTimeout(()=>{
-    sizeLayout();
-    populateMap();
-    buildAll();
-    if(compareMode) drawAllTracks();
-  },120);
-}
-
-/* ── Download raw (original) CSV ────────────────────────────── */
-function downloadRaw(){
-  if(!RAW_TEXT) return;
-  const blob=new Blob([RAW_TEXT],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=currentFile+'.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-}
-
-/* ── Param change: debounced re-analyse ─────────────────────── */
-function onParamChange(){
-  if(!RAW.length) return;
-  clearTimeout(_paramTimer);
-  _paramTimer=setTimeout(()=>processRaw(RAW), 350);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Download CSV
-   Column order matches analytics.py output exactly.
-═══════════════════════════════════════════════════════════════ */
-const CSV_COLS=[
-  'received_at','gps_time_str','elapsed_s','dt_s','gps_fix_valid',
-  'speed_ms','speed_ms_smooth',
-  'fwd_accel_ms2','fwd_accel_smooth','lat_accel_ms2',
-  'distance_m',
-  'altitude_m','alt_change_m','alt_change_smooth_m',
-  'vibration_ms2',
-  'latitude','longitude','gps_bearing_deg','gps_h_accuracy_m','gps_v_accuracy_m',
-];
-
-function downloadCSV(){
-  if(!DATA.length) return;
-  const lines=[CSV_COLS.join(',')];
-  DATA.forEach(d=>{
-    lines.push(CSV_COLS.map(k=>{
-      const v=d[k];
-      return (v==null||v==='')?'':String(v);
-    }).join(','));
-  });
-  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='analytics_'+currentFile+'.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Crosshair plugin
-═══════════════════════════════════════════════════════════════ */
-Chart.register({
-  id:'xhair',
-  afterDraw(ch){
-    if(ch._xi==null) return;
-    const meta=ch.getDatasetMeta(0), pt=meta?.data?.[ch._xi];
-    if(!pt) return;
-    const {ctx,chartArea:{top,bottom}}=ch;
-    ctx.save();
-    const dark=document.documentElement.dataset.theme==='dark';
-    ctx.strokeStyle=dark?'rgba(255,255,255,0.80)':'rgba(0,0,0,0.55)';
-    ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
-    ctx.beginPath(); ctx.moveTo(pt.x,top); ctx.lineTo(pt.x,bottom); ctx.stroke();
-    ctx.restore();
-  }
-});
-function syncX(idx){ Object.values(CH).forEach(ch=>{ ch._xi=idx; ch.update('none'); }); }
-
-function goToIdx(idx,fromMap=false,fromLive=false){
-  if(idx<0||idx>=DATA.length) return;
-  /* If the user manually moves the cursor (not triggered by live auto-follow
-     and not triggered by a map click that originated from live), stop
-     auto-scrolling to the tail so they can inspect historical data. */
-  if(liveTimer && !fromLive && !fromMap) liveAutoFollow=false;
-  if(fromMap) mapLockedIdx=idx;
-  syncX(idx);
-  document.getElementById('tls').value=idx;
-  document.getElementById('tdisp').textContent=XLBL[idx]||fmtTime(XS[idx]||0);
-  updMap(idx);
-  updInsp(idx);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Zoom helpers
-═══════════════════════════════════════════════════════════════ */
-function onZoomOrPan(src){
-  const {min,max}=src.scales.x;
-  Object.values(CH).forEach(ch=>{ if(ch!==src) ch.zoomScale('x',{min,max},'none'); });
-  isZoomed=true;
-  document.getElementById('rzoom').classList.add('vis');
-}
-function resetZoom(){
-  Object.values(CH).forEach(ch=>ch.resetZoom());
-  isZoomed=false;
-  document.getElementById('rzoom').classList.remove('vis');
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Chart factory
-═══════════════════════════════════════════════════════════════ */
-function baseOpts(yLbl){
-  const t=tc();
-  return{
-    responsive:false, animation:false,
-    plugins:{
-      legend:{display:true,position:'top',align:'end',
-        labels:{boxWidth:10,boxHeight:2,padding:7,font:{size:9},color:t.leg}},
-      tooltip:{enabled:false},
-      zoom:{
-        zoom:{wheel:{enabled:true,speed:0.1},pinch:{enabled:true},
-          drag:{enabled:true,backgroundColor:hexA(CL.a,0.10),borderColor:hexA(CL.a,0.60),borderWidth:1},
-          mode:'x',onZoomComplete:({chart})=>onZoomOrPan(chart)},
-        pan:{enabled:true,mode:'x',modifierKey:'shift',onPanComplete:({chart})=>onZoomOrPan(chart)}
-      }
-    },
-    scales:{
-      x:{type:'category',grid:{color:t.grid},
-         ticks:{color:t.tick,maxTicksLimit:10,maxRotation:0,autoSkip:true}},
-      y:{grid:{color:t.grid},ticks:{color:t.tick},
-         title:{display:!!yLbl,text:yLbl,color:t.tick,font:{size:9}}}
-    }
-  };
-}
-
-function ds(label,data,color,fill=false,dashed=false){
-  return{
-    label,data,borderColor:color,
-    backgroundColor:fill?hexA(color,0.12):'transparent',
-    borderWidth:1.5,borderDash:dashed?[4,3]:[],
-    pointRadius:0,pointHoverRadius:0,
-    tension:0.15,fill,spanGaps:false
-  };
-}
-
-function makeChart(id,datasets,opts){
-  const canvas=document.getElementById(id);
-  if(!canvas){ console.warn('No canvas:',id); return; }
-  const w=computeCanvasW();
-  canvas.width=w; canvas.height=CANVAS_H;
-  canvas.style.width=w+'px';
-  /* On mobile the .cc card controls height via CSS min-height;
-     setting an inline style here causes a reflow jump on every update. */
-  if(!isMobile()) canvas.style.height=CANVAS_H+'px';
-  if(CH[id]) CH[id].destroy();
-  const ch=new Chart(canvas,{type:'line',data:{labels:XLBL,datasets},options:opts});
-  CH[id]=ch;
-  canvas.addEventListener('mouseenter',()=>{ mapLockedIdx=null; });
-  canvas.addEventListener('mousemove',e=>{
-    const pts=ch.getElementsAtEventForMode(e,'index',{intersect:false},false);
-    if(pts.length) goToIdx(pts[0].index);
-  });
-  canvas.addEventListener('mouseleave',()=>{
-    if(mapLockedIdx!==null) syncX(mapLockedIdx);
-    else Object.values(CH).forEach(c=>{ c._xi=null; c.update('none'); });
-  });
-  canvas.addEventListener('dblclick',resetZoom);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Build all charts
-═══════════════════════════════════════════════════════════════ */
-function buildAll(){
-  try{
-    /* Velocity */
-    makeChart('c-spd',[
-      ds('GPS speed',  col('speed_ms'),       CL.a,true),
-      ds('Smoothed',   col('speed_ms_smooth'), CL.b,false,true),
-    ],baseOpts('m/s'));
-
-    makeChart('c-brg',[
-      ds('Bearing', col('gps_bearing_deg'), CL.c),
-    ],baseOpts('°'));
-
-    /* Acceleration */
-    makeChart('c-facc',[
-      ds('Raw',     col('fwd_accel_ms2'),   CL.g),
-      ds('Smoothed',col('fwd_accel_smooth'),CL.a),
-    ],baseOpts('m/s²'));
-
-    makeChart('c-lacc',[
-      ds('Lateral (centripetal)',col('lat_accel_ms2'),CL.c,true),
-    ],baseOpts('m/s²'));
-
-    /* Position — altitude with dual y-axis */
-    const altOpts={
-      ...baseOpts('m'),
-      scales:{
-        ...baseOpts('m').scales,
-        y2:{type:'linear',position:'right',
-          grid:{drawOnChartArea:false},
-          ticks:{color:CL.b},
-          title:{display:true,text:'Δalt/step (m)',color:CL.b,font:{size:9}}}
-      }
-    };
-    makeChart('c-alt',[
-      ds('Altitude',       col('altitude_m'),          CL.a,true),
-      {...ds('Δalt/step smooth',col('alt_change_smooth_m'), CL.b,false,true),yAxisID:'y2'},
-    ],altOpts);
-
-    makeChart('c-dst',[
-      ds('Distance',col('distance_m'),CL.a,true),
-    ],baseOpts('m'));
-
-    /* Vibration */
-    makeChart('c-vib',[
-      ds('accel std mag',col('vibration_ms2'),CL.e,true),
-    ],baseOpts('m/s²'));
-
-    makeChart('c-hacc',[
-      ds('H-accuracy',col('gps_h_accuracy_m'),CL.d),
-      ds('V-accuracy',col('gps_v_accuracy_m'),CL.c),
-    ],baseOpts('m'));
-
-    st(`${DATA.length} rows · ${Object.keys(CH).length} charts`);
-    updInsp(0);
-  } catch(err){
-    console.error('buildAll:',err);
-    st('Chart error: '+err.message);
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Tabs
-═══════════════════════════════════════════════════════════════ */
-document.querySelectorAll('.tab').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
-    document.querySelectorAll('.cp').forEach(p=>p.classList.remove('on'));
-    btn.classList.add('on');
-    document.getElementById('p-'+btn.dataset.p).classList.add('on');
-    if(DATA.length){
-      requestAnimationFrame(()=>{
-        const w=computeCanvasW();
-        Object.entries(CH).forEach(([id,ch])=>{
-          const canvas=document.getElementById(id);
-          if(!canvas) return;
-          if(canvas.width!==w||canvas.height!==CANVAS_H){
-            canvas.width=w; canvas.height=CANVAS_H;
-            canvas.style.width=w+'px';
-            if(!isMobile()) canvas.style.height=CANVAS_H+'px';
-            ch.resize(w,CANVAS_H);
-          }
-        });
-        if(isZoomed){const src=Object.values(CH)[0];if(src) onZoomOrPan(src);}
-      });
-    }
-  });
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   Timeline slider
-═══════════════════════════════════════════════════════════════ */
-document.getElementById('tls').addEventListener('input',e=>{
-  if(liveTimer) liveAutoFollow=false;
-  goToIdx(+e.target.value);
-});
-
-/* ═══════════════════════════════════════════════════════════════
-   Map
+   Initialise map on load
 ═══════════════════════════════════════════════════════════════ */
 window.addEventListener('load',()=>{
+  /* uPlot is now guaranteed present — safe to initialise the cursor sync key. */
+  CURSOR_SYNC=uPlot.sync('motoanalytics');
+
   mapObj=L.map('map',{zoomControl:false,attributionControl:false});
   L.control.zoom({position:'bottomright'}).addTo(mapObj);
   swapTile();
   loadFileList();
 
-  /* The header is now two rows (buttons + stats bar), so we always measure
-     its actual height and keep #body.top in sync. The stats row never causes
-     a reflow cascade because it is a separate element from the button row. */
-  const hdr = document.getElementById('hdr');
-  let _hdrDebounce = null;
-  let _lastHdrH = 0;
-  const applyHdrHeight = () => {
-    const h = Math.round(hdr.getBoundingClientRect().height);
-    if(h === _lastHdrH) return;
-    _lastHdrH = h;
-    document.documentElement.style.setProperty('--hdr-h', h + 'px');
-    document.getElementById('body').style.top = h + 'px';
-    if(DATA.length) sizeLayout();
+  const hdr=document.getElementById('hdr');
+  let _hdrDb=null,_lastH=0;
+  /* The header is two rows (buttons + stats bar), so we always measure
+     its actual rendered height and keep #body.top in sync.  The stats
+     row never causes a reflow cascade because it is a separate element
+     from the button row. */
+  const applyHdrH=()=>{
+    const h=Math.round(hdr.getBoundingClientRect().height);
+    if(h===_lastH)return;_lastH=h;
+    document.documentElement.style.setProperty('--hdr-h',h+'px');
+    document.getElementById('body').style.top=h+'px';
+    if(COLS)sizeLayout();
   };
-  new ResizeObserver(() => {
-    clearTimeout(_hdrDebounce);
-    _hdrDebounce = setTimeout(applyHdrHeight, 50);
-  }).observe(hdr);
-  applyHdrHeight();
+  new ResizeObserver(()=>{clearTimeout(_hdrDb);_hdrDb=setTimeout(applyHdrH,50);}).observe(hdr);
+  applyHdrH();
 });
 
-function populateMap(){
-  if(compareMode){ drawAllTracks(); return; }
-  mapAllPts=DATA
-    .map(d=>[+d.latitude,+d.longitude])
-    .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
-  if(!mapAllPts.length) return;
-  /* Remove all compare tracks and the single-device track */
-  Object.values(mapTracks).forEach(t=>{ try{mapObj.removeLayer(t);}catch(_){} });
-  Object.keys(mapTracks).forEach(k=>delete mapTracks[k]);
-  if(mapTrack)  mapObj.removeLayer(mapTrack);
-  if(mapMarker) mapObj.removeLayer(mapMarker);
-  const trackColor = activeDevice ? deviceColor(activeDevice) : CL.a;
-  mapTrack=L.polyline(mapAllPts,{color:trackColor,weight:2.5,opacity:.85}).addTo(mapObj);
-  mapTrack.on('click',function(e){
-    const clat=e.latlng.lat,clon=e.latlng.lng;
-    let best=0,bestD=Infinity;
-    DATA.forEach((d,i)=>{
-      const la=+d.latitude,lo=+d.longitude;
-      if(!isFinite(la)||!isFinite(lo)) return;
-      const dd=(la-clat)**2+(lo-clon)**2;
-      if(dd<bestD){bestD=dd;best=i;}
-    });
-    goToIdx(best,true);
-  });
-  mapObj.invalidateSize();
-  mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
-  setTimeout(()=>{
-    mapObj.invalidateSize();
-    mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});
-  },500);
-  L.circleMarker(mapAllPts[0],{radius:5,color:CL.b,fillColor:CL.b,fillOpacity:1,weight:2})
-    .addTo(mapObj).bindTooltip('Start',{direction:'right'});
-  mapMarker=L.marker(mapAllPts[0],{icon:L.divIcon({
-    className:'',
-    html:`<div style="width:10px;height:10px;border-radius:50%;background:${trackColor};border:2px solid var(--bg);box-shadow:0 0 7px ${trackColor}bb"></div>`,
-    iconSize:[10,10],iconAnchor:[5,5]
-  })}).addTo(mapObj);
-}
-
-function updMap(idx){
-  if(!mapMarker||!DATA[idx]) return;
-  const la=+DATA[idx].latitude,lo=+DATA[idx].longitude;
-  if(isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0)) mapMarker.setLatLng([la,lo]);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Inspector
-═══════════════════════════════════════════════════════════════ */
-const row=(l,v,c='')=>
-  `<div class="ir"><span class="il">${l}</span><span class="iv ${c}">${v}</span></div>`;
-
-function updInsp(idx){
-  const d=DATA[idx]; if(!d) return;
-  const devLabel=activeDevice
-    ? `<div class="ig"><div class="igt">Device</div>
-        <div class="ir"><span class="il">ID / IP</span>
-          <span class="iv" style="color:${deviceColor(activeDevice)}">${activeDevice}</span></div>
-      </div>`
-    : '';
-  document.getElementById('ic').innerHTML=devLabel+`
-    <div class="ig"><div class="igt">Time</div>
-      ${row('Timestamp', String(d.received_at).slice(11,19))}
-      ${d.gps_time_str ? row('GPS time', d.gps_time_str, 'a2') : ''}
-      ${row('Elapsed',   fmtTime(d.elapsed_s),'a1')}
-      ${row('Δt',        fmt(d.dt_s,2)+' s')}
-      ${row('GPS fix',   d.gps_fix_valid?'<span class="a2">✓</span>':'<span class="a4">✗</span>')}
-    </div>
-    <div class="ig"><div class="igt">Velocity</div>
-      ${row('Speed',         fmt(d.speed_ms,2)+' m/s','a1')}
-      ${row('Speed (smooth)',fmt(d.speed_ms_smooth,2)+' m/s','a2')}
-      ${row('Bearing',       fmt(d.gps_bearing_deg,1)+'°')}
-    </div>
-    <div class="ig"><div class="igt">Acceleration</div>
-      ${row('Forward raw',   fmt(d.fwd_accel_ms2,3)+' m/s²','a3')}
-      ${row('Forward smooth',fmt(d.fwd_accel_smooth,3)+' m/s²','a1')}
-      ${row('Lateral',       fmt(d.lat_accel_ms2,3)+' m/s²','a3')}
-    </div>
-    <div class="ig"><div class="igt">Position</div>
-      ${row('Distance',     fmt((+d.distance_m||0)/1000,3)+' km','a1')}
-      ${row('Altitude',     fmt(d.altitude_m,1)+' m','a1')}
-      ${row('Δalt/step',      fmt(d.alt_change_m,1)+' m')}
-      ${row('Δalt/step smth', fmt(d.alt_change_smooth_m,1)+' m','a2')}
-      ${row('Lat',          fmt(d.latitude,6))}
-      ${row('Lon',          fmt(d.longitude,6))}
-    </div>
-    <div class="ig"><div class="igt">Quality</div>
-      ${row('Other',       fmt(d.vibration_ms2,3)+' m/s²','a5')}
-      ${row('H-accuracy',  fmt(d.gps_h_accuracy_m,1)+' m')}
-      ${row('V-accuracy',  fmt(d.gps_v_accuracy_m,1)+' m')}
-    </div>`;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Session stats (header chips)
-═══════════════════════════════════════════════════════════════ */
-function updateStats(){
-  const n=DATA.length, last=DATA[n-1]||{};
-  const altFirst=DATA.find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
-  const altLast=[...DATA].reverse().find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
-  const dalt=altFirst&&altLast ? (+altLast.altitude_m)-(+altFirst.altitude_m) : 0;
-  const maxV=DATA.reduce((m,d)=>Math.max(m,isFinite(+d.speed_ms)?+d.speed_ms:0),0);
-  document.getElementById('cr').innerHTML=`<b>${n}</b> rows`;
-  document.getElementById('cd').innerHTML=`dur <b>${fmtTime(last.elapsed_s)}</b>`;
-  document.getElementById('ck').innerHTML=`dist <b>${((+last.distance_m||0)/1000).toFixed(2)} km</b>`;
-  document.getElementById('ca').innerHTML=`Δalt <b>${dalt>=0?'+':''}${dalt.toFixed(0)} m</b>`;
-  document.getElementById('cs').innerHTML=`max <b>${maxV.toFixed(1)} m/s</b>`;
-  const sl=document.getElementById('tls'); sl.max=n-1; sl.value=0;
-  document.getElementById('tdisp').textContent=XLBL[0]||'0:00';
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Live mode
-   Polls the currently-selected server file every LIVE_INTERVAL ms,
-   re-runs analytics, and refreshes chart data in-place.
-═══════════════════════════════════════════════════════════════ */
-let LIVE_INTERVAL = 5000;   /* ms — updated by interval selector */
-
-function toggleLive(){
-  if(liveTimer){ stopLive(); return; }
-  const sel=document.getElementById('srvsel');
-  const filename=(sel.value||'').trim();
-  if(!filename||!_dirBase){ st('Select a server file first.'); return; }
-  startLive(filename);
-}
-
-/* Single shared poll function — avoids duplicated logic */
-let _liveFilename='';
-function livePoll(){
-  if(!_liveFilename||!_dirBase) return;
-  const url=_dirBase+_liveFilename;
-  fetch(url,{cache:'no-store'})
-    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
-    .then(text=>{
-      Papa.parse(text,{
-        header:true,dynamicTyping:false,skipEmptyLines:true,
-        complete(r){
-          if(!r.data||r.data.length<2) return;
-          const sgW=parseInt(document.getElementById('psg').value)||5;
-          const accW=parseInt(document.getElementById('pacc').value)||20;
-          const altW=parseInt(document.getElementById('palt').value)||5;
-          let analysed;
-          try{ analysed=analyse(r.data,sgW,altW,accW); }catch(e){ return; }
-
-          /* Always update all shared state */
-          const label=_liveFilename.replace(/\.[^.]+$/,'');
-          DEVICES[label]={raw:r.data,data:analysed,rawText:text};
-          RAW=r.data; DATA=analysed; RAW_TEXT=text; currentFile=label;
-          activeDevice=label;
-          XS=DATA.map(d=>{ const v=+d.elapsed_s; return isFinite(v)?v:0; });
-          XLBL=DATA.map(d=>{
-            if(d.gps_time_str) return d.gps_time_str;
-            const s=String(d.received_at||''); const t=s.slice(11,19);
-            return t.length===8?t:fmtTime(+d.elapsed_s||0);
-          });
-          updateDeviceSelector();
-          document.getElementById('dlbtn').style.display='flex';
-          document.getElementById('dlraw').style.display='flex';
-
-          /* Build charts on first poll; refresh in-place on subsequent polls */
-          if(Object.keys(CH).length===0){
-            sizeLayout(); populateMap(); buildAll();
-          } else {
-            liveRefresh();
-          }
-          st(`Live · ${DATA.length} rows · updated ${new Date().toTimeString().slice(0,8)}`);
-        }
-      });
-    })
-    .catch(e=>{ st('Live poll error: '+e.message); });
-}
-
-function startLive(filename){
-  liveAutoFollow=true;
-  _liveFilename=filename;
-  const btn=document.getElementById('livebtn');
-  btn.classList.add('live');
-  btn.innerHTML='<span class="live-dot"></span>Live';
-  document.getElementById('srvbtn').disabled=true;
-  livePoll();
-  liveTimer=setInterval(livePoll,LIVE_INTERVAL);
-}
-
-function stopLive(){
-  if(liveTimer){ clearInterval(liveTimer); liveTimer=null; }
-  _liveFilename='';
-  const btn=document.getElementById('livebtn');
-  btn.classList.remove('live');
-  btn.innerHTML='Live';
-  document.getElementById('srvbtn').disabled=false;
-  st(DATA.length ? `${DATA.length} rows · live stopped` : '');
-}
-
-function onLiveIntervalChange(val){
-  LIVE_INTERVAL=parseInt(val)||5000;
-  if(liveTimer){
-    clearInterval(liveTimer);
-    livePoll();
-    liveTimer=setInterval(livePoll,LIVE_INTERVAL);
-  }
-}
-
-
-/* Update all chart datasets in-place — avoids destroy/recreate flicker. */
-function liveRefresh(){
-  const labels=[...XLBL];
-  Object.entries(CHART_SPECS).forEach(([id,keys])=>{
-    const ch=CH[id]; if(!ch) return;
-    ch.data.labels=labels;
-    keys.forEach((key,i)=>{
-      if(ch.data.datasets[i]) ch.data.datasets[i].data=col(key);
-    });
-    ch.update('none');
-  });
-
-  /* Update header chips (but don't reset slider position). */
-  const n=DATA.length, last=DATA[n-1]||{};
-  const altFirst=DATA.find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
-  const altLast=[...DATA].reverse().find(d=>isFinite(+d.altitude_m)&&+d.altitude_m!==0);
-  const dalt=altFirst&&altLast?(+altLast.altitude_m)-(+altFirst.altitude_m):0;
-  const maxV=DATA.reduce((m,d)=>Math.max(m,isFinite(+d.speed_ms)?+d.speed_ms:0),0);
-  document.getElementById('cr').innerHTML=`<b>${n}</b> rows`;
-  document.getElementById('cd').innerHTML=`dur <b>${fmtTime(last.elapsed_s)}</b>`;
-  document.getElementById('ck').innerHTML=`dist <b>${((+last.distance_m||0)/1000).toFixed(2)} km</b>`;
-  document.getElementById('ca').innerHTML=`Δalt <b>${dalt>=0?'+':''}${dalt.toFixed(0)} m</b>`;
-  document.getElementById('cs').innerHTML=`max <b>${maxV.toFixed(1)} m/s</b>`;
-
-  /* Extend slider range; auto-scroll to tail if the user hasn't
-     manually positioned the cursor. */
-  const sl=document.getElementById('tls');
-  sl.max=n-1;
-  if(liveAutoFollow) goToIdx(n-1,false,true);
-
-  liveUpdateMap();
-}
-
-/* Extend the map track polyline and move the position marker without
-   re-fitting bounds (which would be jarring during a live session). */
-function liveUpdateMap(){
-  if(!mapObj) return;
-  const newPts=DATA
-    .map(d=>[+d.latitude,+d.longitude])
-    .filter(([la,lo])=>isFinite(la)&&isFinite(lo)&&(la!==0||lo!==0));
-  if(!newPts.length) return;
-  if(!mapTrack){ populateMap(); return; }   /* first valid GPS — full init */
-  mapTrack.setLatLngs(newPts);
-  if(mapMarker){
-    const latest=newPts[newPts.length-1];
-    mapMarker.setLatLng(latest);
-    if(liveAutoFollow) mapObj.panTo(latest,{animate:true,duration:0.5});
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Resize
-═══════════════════════════════════════════════════════════════ */
 window.addEventListener('resize',()=>{
-  if(!DATA.length) return;
+  if(!COLS)return;
   sizeLayout();
-  const w=computeCanvasW();
-  Object.entries(CH).forEach(([id,ch])=>{
-    const canvas=document.getElementById(id);
-    if(!canvas) return;
-    canvas.width=w; canvas.height=CANVAS_H;
-    canvas.style.width=w+'px';
-    if(!isMobile()) canvas.style.height=CANVAS_H+'px';
-    ch.resize(w,CANVAS_H);
-  });
-  if(mapObj){ mapObj.invalidateSize(); if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16}); }
+  if(mapObj){mapObj.invalidateSize();if(mapTrack)mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});}
 });
-
 /* iOS / Android fire orientationchange before resize is reliable;
    trigger a second resize pass after the viewport has settled. */
 window.addEventListener('orientationchange',()=>{
   setTimeout(()=>{
-    if(!DATA.length) return;
+    if(!COLS)return;
     sizeLayout();
-    const w=computeCanvasW();
-    Object.entries(CH).forEach(([id,ch])=>{
-      const canvas=document.getElementById(id);
-      if(!canvas) return;
-      canvas.width=w; canvas.height=CANVAS_H;
-      canvas.style.width=w+'px';
-      if(!isMobile()) canvas.style.height=CANVAS_H+'px';
-      ch.resize(w,CANVAS_H);
-    });
-    if(mapObj){ mapObj.invalidateSize(); if(mapTrack) mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16}); }
-  }, 300);
+    if(mapObj){mapObj.invalidateSize();if(mapTrack)mapObj.fitBounds(mapTrack.getBounds(),{padding:[22,22],maxZoom:16});}
+  },300);
 });
 </script>
 </body>
